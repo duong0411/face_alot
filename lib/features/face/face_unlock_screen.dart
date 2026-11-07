@@ -9,6 +9,7 @@ import '../../core/config.dart';
 import '../../core/mqtt/door_mqtt.dart';
 import '../../core/theme/app_theme.dart';
 import '../../face_ncnn/face_ncnn_ffi.dart';
+import 'face_register_screen.dart';
 
 class FaceUnlockScreen extends StatefulWidget {
   const FaceUnlockScreen({super.key});
@@ -22,11 +23,13 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
   final _api = FaceApi();
   final _mqtt = DoorMqtt();
   Timer? _timer;
-  String _status = 'Đang chuẩn bị camera...';
+  String _status = 'Đang chuẩn bị...';
   String? _lastName;
   double _lastScore = 0;
   bool _matched = false;
   int _gallerySize = 0;
+  bool _emptyGallery = false;
+  bool _camFailed = false;
   DateTime _lastOpen = DateTime.fromMillisecondsSinceEpoch(0);
   bool _processing = false;
 
@@ -42,11 +45,21 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
       final list = await _api.list();
       _gallerySize = list.length;
       if (list.isEmpty) {
-        setState(() => _status =
-            'Chưa có thành viên nào.\nHãy thêm khuôn mặt trước khi mở cửa.');
+        if (!mounted) return;
+        setState(() {
+          _emptyGallery = true;
+          _status = 'Chưa có thành viên';
+        });
         return;
       }
       final cams = await availableCameras();
+      if (cams.isEmpty) {
+        setState(() {
+          _camFailed = true;
+          _status = 'Không tìm thấy camera trên máy';
+        });
+        return;
+      }
       final front = cams.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cams.first,
@@ -61,12 +74,16 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
       if (!mounted) return;
       setState(() {
         _cam = ctrl;
-        _status = 'Nhìn thẳng vào camera';
+        _status = 'Nhìn thẳng vào khung';
       });
       _timer =
           Timer.periodic(const Duration(milliseconds: 900), (_) => _tick());
     } catch (e) {
-      setState(() => _status = 'Không mở được nhận diện: $e');
+      if (!mounted) return;
+      setState(() {
+        _camFailed = true;
+        _status = 'Không mở được nhận diện: $e';
+      });
     }
   }
 
@@ -76,7 +93,10 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
     try {
       final shot = await _cam!.takePicture();
       final bytes = await shot.readAsBytes();
-      final codec = await ui.instantiateImageCodec(bytes);
+      final codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: 640,
+      );
       final frame = await codec.getNextFrame();
       final img = frame.image;
       final bd = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
@@ -84,6 +104,7 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
       final r = FaceNcnn.instance
           .infer(bd.buffer.asUint8List(), img.width, img.height);
       if (r.emb == null) {
+        if (!mounted) return;
         setState(() {
           _status = 'Chưa thấy khuôn mặt';
           _lastName = null;
@@ -100,6 +121,7 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
       final accepted = id['accepted'] as Map<String, dynamic>?;
       _gallerySize = (id['gallerySize'] as num?)?.toInt() ?? _gallerySize;
 
+      if (!mounted) return;
       setState(() {
         if (accepted != null) {
           _matched = true;
@@ -113,7 +135,8 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
           if (hits.isNotEmpty) {
             final best = hits.first as Map<String, dynamic>;
             _lastScore = (best['score'] as num).toDouble();
-            _status = 'Chưa khớp thành viên';
+            _status =
+                'Chưa khớp · gần nhất ${_lastScore.toStringAsFixed(2)}';
           } else {
             _status = 'Chưa có dữ liệu khuôn mặt';
           }
@@ -134,10 +157,28 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
         }
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => _status = 'Lỗi: $e');
     } finally {
       _processing = false;
     }
+  }
+
+  Future<void> _goRegister() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const FaceRegisterScreen()),
+    );
+    if (!mounted) return;
+    _timer?.cancel();
+    await _cam?.dispose();
+    _cam = null;
+    setState(() {
+      _emptyGallery = false;
+      _camFailed = false;
+      _status = 'Đang chuẩn bị...';
+    });
+    await _setup();
   }
 
   @override
@@ -151,23 +192,103 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
   @override
   Widget build(BuildContext context) {
     final ready = _cam != null && _cam!.value.isInitialized;
+
+    if (_emptyGallery || _camFailed) {
+      return Scaffold(
+        backgroundColor: AppColors.ink,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.arrow_back_rounded,
+                          color: Colors.white),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Mở cửa',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Icon(
+                  _emptyGallery
+                      ? Icons.person_off_outlined
+                      : Icons.videocam_off_outlined,
+                  size: 64,
+                  color: Colors.white54,
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  _emptyGallery
+                      ? 'Chưa có thành viên'
+                      : 'Không mở được camera',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _emptyGallery
+                      ? 'Thêm khuôn mặt trước, rồi quay lại để mở cửa.'
+                      : _status,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    height: 1.4,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                if (_emptyGallery)
+                  FilledButton.icon(
+                    onPressed: _goRegister,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.sage,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    icon: const Icon(Icons.person_add_alt_1_rounded),
+                    label: const Text('Thêm thành viên'),
+                  ),
+                const Spacer(flex: 2),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.ink,
       body: Stack(
         fit: StackFit.expand,
         children: [
           if (ready)
-            CameraPreview(_cam!)
-          else
-            Container(
-              color: AppColors.ink,
-              alignment: Alignment.center,
-              padding: const EdgeInsets.all(28),
-              child: Text(
-                _status,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white70, height: 1.4),
+            FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: _cam!.value.previewSize?.height ?? 720,
+                height: _cam!.value.previewSize?.width ?? 1280,
+                child: CameraPreview(_cam!),
               ),
+            )
+          else
+            const Center(
+              child: CircularProgressIndicator(color: Colors.white54),
             ),
           SafeArea(
             child: Padding(
@@ -187,9 +308,18 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
                           ),
                     ),
                   ),
-                  Text(
-                    '$_gallerySize thành viên',
-                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '$_gallerySize TV',
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
                   ),
                 ],
               ),
@@ -212,7 +342,7 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
               decoration: BoxDecoration(
                 color: _matched
                     ? AppColors.ok.withValues(alpha: 0.92)
-                    : Colors.black.withValues(alpha: 0.55),
+                    : Colors.black.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Column(
@@ -231,7 +361,8 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
                     const SizedBox(height: 4),
                     Text(
                       'Độ khớp ${_lastScore.toStringAsFixed(2)} · cửa đang mở',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                   ],
                 ],

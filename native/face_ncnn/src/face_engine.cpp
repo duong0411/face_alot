@@ -18,7 +18,8 @@ bool g_ready = false;
 
 constexpr int kEmbDim = 128;
 constexpr int kDetSize = 320;
-constexpr float kDetConf = 0.45f;
+// OpenCV YuNet mặc định ~0.6–0.9; dùng sqrt(cls*obj) nên 0.5 ổn định hơn trên selfie.
+constexpr float kDetConf = 0.5f;
 
 struct Face {
   float x1, y1, x2, y2, score;
@@ -35,7 +36,7 @@ void l2_normalize(float* v, int n) {
   for (int i = 0; i < n; i++) v[i] = float(v[i] / s);
 }
 
-// OpenCV YuNet decode: bbox = khoảng cách tới 4 cạnh ô lưới (không phải center+exp).
+// Khớp OpenCV modules/objdetect/src/face_detect.cpp (YuNet).
 void decode_stride(const ncnn::Mat& cls, const ncnn::Mat& obj, const ncnn::Mat& bbox,
                    int stride, int img_w, int img_h, float scale_x, float scale_y,
                    std::vector<Face>& faces) {
@@ -52,14 +53,20 @@ void decode_stride(const ncnn::Mat& cls, const ncnn::Mat& obj, const ncnn::Mat& 
   for (int y = 0; y < feat_h; y++) {
     for (int x = 0; x < feat_w; x++) {
       const int i = y * feat_w + x;
-      const float score = cls_ptr[i] * obj_ptr[i];
+      float cls_s = clampf(cls_ptr[i], 0.f, 1.f);
+      float obj_s = clampf(obj_ptr[i], 0.f, 1.f);
+      const float score = std::sqrt(cls_s * obj_s);
       if (score < kDetConf) continue;
 
       const float* b = box_ptr + i * 4;
-      const float x1 = (x + 0.5f - b[0]) * stride;
-      const float y1 = (y + 0.5f - b[1]) * stride;
-      const float x2 = (x + 0.5f + b[2]) * stride;
-      const float y2 = (y + 0.5f + b[3]) * stride;
+      const float cx = (x + b[0]) * stride;
+      const float cy = (y + b[1]) * stride;
+      const float bw = std::exp(b[2]) * stride;
+      const float bh = std::exp(b[3]) * stride;
+      const float x1 = cx - bw * 0.5f;
+      const float y1 = cy - bh * 0.5f;
+      const float x2 = cx + bw * 0.5f;
+      const float y2 = cy + bh * 0.5f;
 
       Face f;
       f.x1 = clampf(x1 / scale_x, 0.f, float(img_w - 1));

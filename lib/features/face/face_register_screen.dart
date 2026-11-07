@@ -9,7 +9,7 @@ import '../../core/providers/auth_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/home_atmosphere.dart';
 import '../../face_ncnn/face_image.dart';
-import '../../face_ncnn/face_ncnn_ffi.dart';
+import '../../face_ncnn/face_ncnn_ffi.dart' show FaceNcnn;
 
 class FaceRegisterScreen extends StatefulWidget {
   const FaceRegisterScreen({super.key});
@@ -25,9 +25,11 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
   final List<Map<String, dynamic>> _people = [];
 
   Uint8List? _preview;
-  String _status = 'Chụp ảnh hoặc chọn ảnh có khuôn mặt rõ.';
+  double? _faceScore;
+  String _status = 'Chụp hoặc tải ảnh mặt nhìn thẳng';
   bool _busy = false;
   bool _ready = false;
+  bool _detecting = false;
   String? _lastPersonId;
 
   @override
@@ -44,7 +46,7 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
       setState(() {
         _ready = true;
         _nameCtrl.text = context.read<AuthProvider>().user?.name ?? '';
-        _status = 'Chụp hoặc tải ảnh mặt → Đăng ký';
+        _status = 'Chụp hoặc tải ảnh → hệ thống tự kiểm tra mặt';
       });
     } catch (e) {
       setState(() => _status = 'Không khởi tạo nhận diện: $e');
@@ -62,13 +64,13 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
   }
 
   Future<void> _pick(ImageSource source) async {
-    if (_busy || !_ready) return;
+    if (_busy || !_ready || _detecting) return;
     try {
       final file = await _picker.pickImage(
         source: source,
-        maxWidth: 1600,
-        maxHeight: 1600,
-        imageQuality: 92,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 90,
         preferredCameraDevice: CameraDevice.front,
       );
       if (file == null) return;
@@ -76,16 +78,39 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
       if (!mounted) return;
       setState(() {
         _preview = bytes;
-        _status = source == ImageSource.camera
-            ? 'Đã chụp — nhấn Đăng ký hoặc Thêm ảnh mẫu'
-            : 'Đã chọn ảnh — nhấn Đăng ký hoặc Thêm ảnh mẫu';
+        _faceScore = null;
+        _status = 'Đang kiểm tra khuôn mặt...';
+        _detecting = true;
       });
+      await _runDetect(bytes);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _status = 'Không lấy được ảnh: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không lấy được ảnh: $e')),
-      );
+      setState(() {
+        _detecting = false;
+        _status = 'Không lấy được ảnh: $e';
+      });
+    }
+  }
+
+  Future<void> _runDetect(Uint8List bytes) async {
+    try {
+      final r = await detectEmbedFromPhotoBytes(bytes);
+      if (!mounted) return;
+      setState(() {
+        _faceScore = r.score;
+        _status =
+            'Đã thấy mặt · độ tin cậy ${r.score.toStringAsFixed(2)} — có thể Đăng ký';
+        _detecting = false;
+      });
+    } catch (e) {
+      final msg =
+          '$e'.replaceFirst('Bad state: ', '').replaceFirst('Exception: ', '');
+      if (!mounted) return;
+      setState(() {
+        _faceScore = null;
+        _status = msg;
+        _detecting = false;
+      });
     }
   }
 
@@ -94,28 +119,43 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
     if (bytes == null || bytes.isEmpty) {
       throw StateError('Chưa có ảnh. Hãy chụp hoặc chọn ảnh trước.');
     }
+    if (_faceScore == null) {
+      final r = await detectEmbedFromPhotoBytes(bytes);
+      return r.emb;
+    }
     return embeddingFromPhotoBytes(bytes);
   }
 
+  void _toast(String msg) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      ),
+    );
+  }
+
   Future<void> _registerNew() async {
-    if (_busy || !_ready) return;
+    if (_busy || !_ready || _detecting) return;
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nhập tên thành viên')),
-      );
+      _toast('Nhập tên thành viên');
       return;
     }
     if (_preview == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chụp hoặc chọn ảnh khuôn mặt trước')),
-      );
+      _toast('Chụp hoặc chọn ảnh khuôn mặt trước');
+      return;
+    }
+    if (_faceScore == null) {
+      _toast('Chưa thấy khuôn mặt trong ảnh — chọn ảnh khác');
       return;
     }
 
     setState(() {
       _busy = true;
-      _status = 'Đang tìm mặt và lưu...';
+      _status = 'Đang lưu thành viên...';
     });
     try {
       final emb = await _embeddingFromPreview();
@@ -125,35 +165,25 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
       if (!mounted) return;
       setState(() => _status =
           'Đã thêm ${data['name']} · ${data['sampleCount']} ảnh mẫu');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đã đăng ký ${data['name']}')),
-      );
+      _toast('Đã đăng ký ${data['name']}');
     } catch (e) {
-      final msg = '$e'.replaceFirst('Bad state: ', '').replaceFirst('Exception: ', '');
+      final msg =
+          '$e'.replaceFirst('Bad state: ', '').replaceFirst('Exception: ', '');
       setState(() => _status = msg);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-      }
+      if (mounted) _toast(msg.split('\n').first);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _addSample() async {
-    if (_busy || !_ready) return;
+    if (_busy || !_ready || _detecting) return;
     if (_lastPersonId == null) {
-      // Allow adding to selected person by name match, else ask register first
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Đăng ký thành viên mới trước, rồi thêm ảnh mẫu'),
-        ),
-      );
+      _toast('Đăng ký thành viên mới trước, rồi thêm ảnh mẫu');
       return;
     }
-    if (_preview == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chụp hoặc chọn ảnh trước')),
-      );
+    if (_preview == null || _faceScore == null) {
+      _toast('Cần ảnh có khuôn mặt hợp lệ');
       return;
     }
 
@@ -168,12 +198,12 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
       await _reloadList();
       if (!mounted) return;
       setState(() => _status = 'Đã thêm mẫu · tổng ${data['sampleCount']} ảnh');
+      _toast('Đã thêm ảnh mẫu');
     } catch (e) {
-      final msg = '$e'.replaceFirst('Bad state: ', '').replaceFirst('Exception: ', '');
+      final msg =
+          '$e'.replaceFirst('Bad state: ', '').replaceFirst('Exception: ', '');
       setState(() => _status = msg);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-      }
+      if (mounted) _toast(msg.split('\n').first);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -194,6 +224,8 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final faceOk = _faceScore != null;
+
     return Scaffold(
       body: HomeAtmosphere(
         child: SafeArea(
@@ -212,6 +244,14 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
+                  if (_ready)
+                    Text(
+                      '${_people.length} TV',
+                      style: TextStyle(
+                        color: AppColors.inkSoft,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -219,12 +259,22 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
                 padding: EdgeInsets.zero,
                 child: AspectRatio(
                   aspectRatio: 3 / 4,
-                  child: _preview != null
-                      ? ClipRRect(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (_preview != null)
+                        ClipRRect(
                           borderRadius: BorderRadius.circular(22),
-                          child: Image.memory(_preview!, fit: BoxFit.cover),
+                          child: ColoredBox(
+                            color: Colors.black12,
+                            child: Image.memory(
+                              _preview!,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
                         )
-                      : Container(
+                      else
+                        Container(
                           alignment: Alignment.center,
                           padding: const EdgeInsets.all(24),
                           child: Column(
@@ -236,8 +286,8 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
                                 color: AppColors.sage.withValues(alpha: 0.55),
                               ),
                               const SizedBox(height: 12),
-                              Text(
-                                'Chưa có ảnh\nChụp hoặc tải ảnh mặt nhìn thẳng',
+                              const Text(
+                                'Chưa có ảnh\nĐể cả khuôn mặt trong khung',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: AppColors.inkSoft,
@@ -247,6 +297,61 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
                             ],
                           ),
                         ),
+                      if (_detecting)
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black38,
+                            borderRadius: BorderRadius.circular(22),
+                          ),
+                          alignment: Alignment.center,
+                          child: const CircularProgressIndicator(
+                            color: Colors.white,
+                          ),
+                        ),
+                      if (_preview != null && !_detecting)
+                        Positioned(
+                          left: 12,
+                          right: 12,
+                          bottom: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: faceOk
+                                  ? AppColors.ok.withValues(alpha: 0.92)
+                                  : Colors.black.withValues(alpha: 0.65),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  faceOk
+                                      ? Icons.check_circle_rounded
+                                      : Icons.error_outline_rounded,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    faceOk
+                                        ? 'Detect OK · ${_faceScore!.toStringAsFixed(2)}'
+                                        : 'Không detect được mặt',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -254,7 +359,7 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: (_busy || !_ready)
+                      onPressed: (_busy || !_ready || _detecting)
                           ? null
                           : () => _pick(ImageSource.camera),
                       icon: const Icon(Icons.photo_camera_outlined),
@@ -267,7 +372,7 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: (_busy || !_ready)
+                      onPressed: (_busy || !_ready || _detecting)
                           ? null
                           : () => _pick(ImageSource.gallery),
                       icon: const Icon(Icons.photo_library_outlined),
@@ -279,13 +384,14 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Text(
                 _status,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.inkSoft,
+                      color: faceOk ? AppColors.sage : AppColors.inkSoft,
                       height: 1.35,
+                      fontWeight: faceOk ? FontWeight.w600 : FontWeight.w400,
                     ),
               ),
               const SizedBox(height: 12),
@@ -305,7 +411,9 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
                       children: [
                         Expanded(
                           child: FilledButton(
-                            onPressed: (_busy || !_ready) ? null : _registerNew,
+                            onPressed: (_busy || !_ready || !faceOk)
+                                ? null
+                                : _registerNew,
                             child: Padding(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               child: _busy
@@ -324,7 +432,9 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: (_busy || !_ready) ? null : _addSample,
+                            onPressed: (_busy || !_ready || !faceOk)
+                                ? null
+                                : _addSample,
                             child: const Padding(
                               padding: EdgeInsets.symmetric(vertical: 12),
                               child: Text('Thêm ảnh mẫu'),

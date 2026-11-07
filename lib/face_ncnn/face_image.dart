@@ -3,10 +3,17 @@ import 'dart:ui' as ui;
 
 import 'face_ncnn_ffi.dart';
 
-/// Decode photo bytes → face embedding (resize lớn để detector ổn định hơn).
-Future<Float32List> embeddingFromPhotoBytes(
+class FacePhotoResult {
+  FacePhotoResult({required this.emb, required this.box, required this.score});
+  final Float32List emb;
+  final FaceBox box;
+  final double score;
+}
+
+/// Decode photo bytes → face embedding + box (thử vài kích thước).
+Future<FacePhotoResult> detectEmbedFromPhotoBytes(
   Uint8List bytes, {
-  int maxSide = 640,
+  int maxSide = 720,
 }) async {
   await FaceNcnn.instance.ensureLoaded();
 
@@ -20,48 +27,58 @@ Future<Float32List> embeddingFromPhotoBytes(
     return frame.image;
   }
 
-  var img = await decodeAt(null, null);
-  if (img.width > maxSide || img.height > maxSide) {
-    final landscape = img.width >= img.height;
-    img = await decodeAt(
-      landscape ? maxSide : null,
-      landscape ? null : maxSide,
-    );
-  }
+  final targets = <({int? tw, int? th})>[
+    (tw: null, th: null),
+    (tw: maxSide, th: null),
+    (tw: 480, th: null),
+    (tw: 320, th: null),
+  ];
 
-  // Thử kích thước gốc; nếu không thấy mặt, thử scale nhỏ hơn (selfie gần).
-  final sizes = <ui.Image>[img];
-  if (img.width > 480 && img.height > 480) {
-    final landscape = img.width >= img.height;
-    sizes.add(await decodeAt(
-      landscape ? 480 : null,
-      landscape ? null : 480,
-    ));
-  }
+  FacePhotoResult? best;
+  int lastCount = 0;
 
-  Float32List? emb;
-  for (final candidate in sizes) {
-    final bd = await candidate.toByteData(format: ui.ImageByteFormat.rawRgba);
+  for (final t in targets) {
+    final img = await decodeAt(t.tw, t.th);
+    // Bỏ ảnh quá nhỏ / quá lớn sau decode
+    if (img.width < 64 || img.height < 64) continue;
+    if (img.width > 2000 || img.height > 2000) continue;
+
+    final bd = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
     if (bd == null) continue;
     final r = FaceNcnn.instance.infer(
       bd.buffer.asUint8List(),
-      candidate.width,
-      candidate.height,
+      img.width,
+      img.height,
     );
+    lastCount = r.count;
     if (r.count < 0) {
       throw StateError('Nhận diện lỗi (mã ${r.count}). Thử lại.');
     }
-    if (r.emb != null) {
-      emb = r.emb;
-      break;
+    if (r.emb != null && r.box != null) {
+      final score = r.box!.score;
+      if (best == null || score > best.score) {
+        best = FacePhotoResult(emb: r.emb!, box: r.box!, score: score);
+      }
+      // Đủ tốt thì dừng sớm
+      if (score >= 0.7) break;
     }
   }
 
-  if (emb == null) {
+  if (best == null) {
     throw StateError(
-      'Không thấy khuôn mặt trong ảnh.\n'
-      'Hãy dùng ảnh rõ mặt, nhìn thẳng, đủ sáng, khoảng cách vừa phải.',
+      lastCount == 0
+          ? 'Không thấy khuôn mặt.\n'
+              'Đưa cả mặt vào khung, nhìn thẳng, đủ sáng.'
+          : 'Phát hiện mặt nhưng không lấy được đặc trưng.\nThử ảnh khác.',
     );
   }
-  return emb;
+  return best;
+}
+
+Future<Float32List> embeddingFromPhotoBytes(
+  Uint8List bytes, {
+  int maxSide = 720,
+}) async {
+  final r = await detectEmbedFromPhotoBytes(bytes, maxSide: maxSide);
+  return r.emb;
 }

@@ -7,9 +7,9 @@ import 'package:flutter/material.dart';
 import '../../core/api/face_api.dart';
 import '../../core/config.dart';
 import '../../core/mqtt/door_mqtt.dart';
+import '../../core/theme/app_theme.dart';
 import '../../face_ncnn/face_ncnn_ffi.dart';
 
-/// NCNN trên máy → embedding → **identify 1:N trên MongoDB** (API public).
 class FaceUnlockScreen extends StatefulWidget {
   const FaceUnlockScreen({super.key});
 
@@ -22,10 +22,10 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
   final _api = FaceApi();
   final _mqtt = DoorMqtt();
   Timer? _timer;
-  String _status = 'Khởi tạo...';
+  String _status = 'Đang chuẩn bị camera...';
   String? _lastName;
   double _lastScore = 0;
-  List<dynamic> _topHits = [];
+  bool _matched = false;
   int _gallerySize = 0;
   DateTime _lastOpen = DateTime.fromMillisecondsSinceEpoch(0);
   bool _processing = false;
@@ -42,8 +42,8 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
       final list = await _api.list();
       _gallerySize = list.length;
       if (list.isEmpty) {
-        setState(() =>
-            _status = 'MongoDB gallery trống — đăng ký mặt trên server trước');
+        setState(() => _status =
+            'Chưa có thành viên nào.\nHãy thêm khuôn mặt trước khi mở cửa.');
         return;
       }
       final cams = await availableCameras();
@@ -61,13 +61,12 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
       if (!mounted) return;
       setState(() {
         _cam = ctrl;
-        _status =
-            '1:N MongoDB · N=$_gallerySize · API duynguyen.io.vn';
+        _status = 'Nhìn thẳng vào camera';
       });
       _timer =
           Timer.periodic(const Duration(milliseconds: 900), (_) => _tick());
     } catch (e) {
-      setState(() => _status = 'Lỗi: $e');
+      setState(() => _status = 'Không mở được nhận diện: $e');
     }
   }
 
@@ -86,9 +85,9 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
           .infer(bd.buffer.asUint8List(), img.width, img.height);
       if (r.emb == null) {
         setState(() {
-          _status = 'Không thấy mặt';
+          _status = 'Chưa thấy khuôn mặt';
           _lastName = null;
-          _topHits = [];
+          _matched = false;
         });
         return;
       }
@@ -99,24 +98,25 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
         topK: 3,
       );
       final accepted = id['accepted'] as Map<String, dynamic>?;
-      final hits = (id['hits'] as List?) ?? [];
       _gallerySize = (id['gallerySize'] as num?)?.toInt() ?? _gallerySize;
 
       setState(() {
-        _topHits = hits;
         if (accepted != null) {
+          _matched = true;
           _lastName = '${accepted['name']}';
           _lastScore = (accepted['score'] as num).toDouble();
-          _status =
-              'OK Mongo 1:N → $_lastName (${_lastScore.toStringAsFixed(2)})';
-        } else if (hits.isNotEmpty) {
-          final best = hits.first as Map<String, dynamic>;
-          _lastName = null;
-          _lastScore = (best['score'] as num).toDouble();
-          _status =
-              'Unknown · gần: ${best['name']} (${_lastScore.toStringAsFixed(2)})';
+          _status = 'Xin chào $_lastName';
         } else {
-          _status = 'Gallery trống trên MongoDB';
+          _matched = false;
+          _lastName = null;
+          final hits = (id['hits'] as List?) ?? [];
+          if (hits.isNotEmpty) {
+            final best = hits.first as Map<String, dynamic>;
+            _lastScore = (best['score'] as num).toDouble();
+            _status = 'Chưa khớp thành viên';
+          } else {
+            _status = 'Chưa có dữ liệu khuôn mặt';
+          }
         }
       });
 
@@ -129,7 +129,7 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
           await _mqtt.openDoor(name: name);
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Mongo 1:N → mở cửa: $name')),
+            SnackBar(content: Text('Đã mở cửa cho $name')),
           );
         }
       }
@@ -150,63 +150,131 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ready = _cam != null && _cam!.value.isInitialized;
     return Scaffold(
-      appBar: AppBar(title: const Text('Mở cửa 1:N (MongoDB)')),
-      body: Column(
+      backgroundColor: AppColors.ink,
+      body: Stack(
+        fit: StackFit.expand,
         children: [
-          Expanded(
-            child: _cam == null || !_cam!.value.isInitialized
-                ? Center(child: Text(_status, textAlign: TextAlign.center))
-                : Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      CameraPreview(_cam!),
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 16,
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            _status,
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 15),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-          if (_topHits.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          if (ready)
+            CameraPreview(_cam!)
+          else
+            Container(
+              color: AppColors.ink,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.all(28),
+              child: Text(
+                _status,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70, height: 1.4),
+              ),
+            ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 16, 0),
+              child: Row(
                 children: [
-                  Text('Top-K (server MongoDB)',
-                      style: Theme.of(context).textTheme.titleSmall),
-                  ..._topHits.map((h) {
-                    final m = h as Map<String, dynamic>;
-                    return Text(
-                      '#${m['rank']} ${m['name']}  ${(m['score'] as num).toStringAsFixed(3)}',
-                    );
-                  }),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.arrow_back_rounded,
+                        color: Colors.white),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'Mở cửa',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: Colors.white,
+                          ),
+                    ),
+                  ),
+                  Text(
+                    '$_gallerySize thành viên',
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
                 ],
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Text(
-              'N=$_gallerySize · thr ${AppConfig.matchThreshold} · host API public',
+          ),
+          if (ready)
+            IgnorePointer(
+              child: CustomPaint(
+                painter: _FaceFramePainter(matched: _matched),
+                child: const SizedBox.expand(),
+              ),
+            ),
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 28,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 280),
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+              decoration: BoxDecoration(
+                color: _matched
+                    ? AppColors.ok.withValues(alpha: 0.92)
+                    : Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _status,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (_matched) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Độ khớp ${_lastScore.toStringAsFixed(2)} · cửa đang mở',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _FaceFramePainter extends CustomPainter {
+  _FaceFramePainter({required this.matched});
+  final bool matched;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final color = matched ? AppColors.ok : Colors.white.withValues(alpha: 0.7);
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final w = size.width * 0.62;
+    final h = size.height * 0.38;
+    final left = (size.width - w) / 2;
+    final top = size.height * 0.22;
+    final len = 28.0;
+
+    void corner(double x, double y, double dx, double dy) {
+      canvas.drawLine(Offset(x, y), Offset(x + dx, y), paint);
+      canvas.drawLine(Offset(x, y), Offset(x, y + dy), paint);
+    }
+
+    corner(left, top, len, len);
+    corner(left + w, top, -len, len);
+    corner(left, top + h, len, -len);
+    corner(left + w, top + h, -len, -len);
+  }
+
+  @override
+  bool shouldRepaint(covariant _FaceFramePainter oldDelegate) =>
+      oldDelegate.matched != matched;
 }

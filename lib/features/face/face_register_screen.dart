@@ -7,9 +7,10 @@ import 'package:provider/provider.dart';
 
 import '../../core/api/face_api.dart';
 import '../../core/providers/auth_provider.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/home_atmosphere.dart';
 import '../../face_ncnn/face_ncnn_ffi.dart';
 
-/// Đăng ký mặt → MongoDB Docker (public qua https://duynguyen.io.vn/api/faces).
 class FaceRegisterScreen extends StatefulWidget {
   const FaceRegisterScreen({super.key});
 
@@ -22,7 +23,7 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
   final _api = FaceApi();
   final _nameCtrl = TextEditingController();
   final List<Map<String, dynamic>> _people = [];
-  String _status = 'Đang khởi tạo...';
+  String _status = 'Đang mở camera...';
   bool _busy = false;
   String? _lastPersonId;
 
@@ -52,11 +53,10 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
       setState(() {
         _cam = ctrl;
         _nameCtrl.text = context.read<AuthProvider>().user?.name ?? '';
-        _status =
-            'Gallery MongoDB: ${_people.length} người\nAPI: duynguyen.io.vn/api/faces';
+        _status = 'Nhìn thẳng camera, rồi nhấn Đăng ký';
       });
     } catch (e) {
-      setState(() => _status = 'Lỗi: $e');
+      setState(() => _status = 'Không mở được camera: $e');
     }
   }
 
@@ -89,13 +89,13 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nhập tên người')),
+        const SnackBar(content: Text('Nhập tên thành viên')),
       );
       return;
     }
     setState(() {
       _busy = true;
-      _status = 'Upload embedding → MongoDB...';
+      _status = 'Đang lưu khuôn mặt...';
     });
     try {
       final emb = await _captureEmbedding();
@@ -104,7 +104,7 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
       await _reloadList();
       if (!mounted) return;
       setState(() => _status =
-          'Đã lưu MongoDB: ${data['name']} (${data['sampleCount']} mẫu)');
+          'Đã thêm ${data['name']} · ${data['sampleCount']} ảnh mẫu');
     } catch (e) {
       setState(() => _status = 'Lỗi: $e');
     } finally {
@@ -115,20 +115,20 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
   Future<void> _addSample() async {
     if (_busy || _lastPersonId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đăng ký người mới trước')),
+        const SnackBar(content: Text('Đăng ký thành viên mới trước')),
       );
       return;
     }
     setState(() {
       _busy = true;
-      _status = 'Thêm mẫu → MongoDB...';
+      _status = 'Đang thêm ảnh mẫu...';
     });
     try {
       final emb = await _captureEmbedding();
       final data =
           await _api.addSample(personId: _lastPersonId!, embedding: emb);
       await _reloadList();
-      setState(() => _status = 'Sample OK · ${data['sampleCount']} mẫu');
+      setState(() => _status = 'Đã thêm mẫu · tổng ${data['sampleCount']} ảnh');
     } catch (e) {
       setState(() => _status = 'Lỗi: $e');
     } finally {
@@ -140,7 +140,7 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
     await _api.remove(personId);
     if (_lastPersonId == personId) _lastPersonId = null;
     await _reloadList();
-    setState(() => _status = 'Đã xoá $personId trên MongoDB');
+    setState(() => _status = 'Đã xoá thành viên');
   }
 
   @override
@@ -152,67 +152,150 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ready = _cam != null && _cam!.value.isInitialized;
     return Scaffold(
-      appBar: AppBar(title: const Text('Đăng ký mặt → MongoDB')),
-      body: Column(
-        children: [
-          Expanded(
-            flex: 3,
-            child: _cam == null || !_cam!.value.isInitialized
-                ? Center(child: Text(_status, textAlign: TextAlign.center))
-                : CameraPreview(_cam!),
-          ),
-          Expanded(
-            flex: 2,
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Text(_status, textAlign: TextAlign.center),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Tên (1:N trên server)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
+      body: HomeAtmosphere(
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 16, 8),
+                child: Row(
                   children: [
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _busy ? null : _registerNew,
-                        child: const Text('Đăng ký → Mongo'),
-                      ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.arrow_back_rounded),
                     ),
-                    const SizedBox(width: 8),
                     Expanded(
-                      child: OutlinedButton(
-                        onPressed: _busy ? null : _addSample,
-                        child: const Text('Thêm mẫu'),
+                      child: Text(
+                        'Thêm thành viên',
+                        style: Theme.of(context).textTheme.titleLarge,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Text('Gallery server (${_people.length})',
-                    style: Theme.of(context).textTheme.titleSmall),
-                ..._people.map(
-                  (p) => ListTile(
-                    dense: true,
-                    title: Text('${p['name']}'),
-                    subtitle: Text(
-                        '${p['sampleCount']} mẫu · ${p['personId']}'),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () => _delete('${p['personId']}'),
-                    ),
+              ),
+              Expanded(
+                flex: 5,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: ready
+                        ? CameraPreview(_cam!)
+                        : Container(
+                            color: AppColors.ink.withValues(alpha: 0.08),
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              _status,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: AppColors.inkSoft),
+                            ),
+                          ),
                   ),
                 ),
-              ],
-            ),
+              ),
+              Expanded(
+                flex: 4,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                  children: [
+                    Text(
+                      _status,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppColors.inkSoft,
+                          ),
+                    ),
+                    const SizedBox(height: 12),
+                    SoftPanel(
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _nameCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Tên thành viên',
+                              prefixIcon: Icon(Icons.person_outline_rounded),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed: _busy ? null : _registerNew,
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 12),
+                                    child: Text('Đăng ký'),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: _busy ? null : _addSample,
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 12),
+                                    child: Text('Thêm ảnh'),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Trong nhà (${_people.length})',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    if (_people.isEmpty)
+                      Text(
+                        'Chưa có ai — đăng ký người đầu tiên.',
+                        style: TextStyle(color: AppColors.inkSoft),
+                      ),
+                    ..._people.map(
+                      (p) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: SoftPanel(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 6,
+                          ),
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: CircleAvatar(
+                              backgroundColor:
+                                  AppColors.sage.withValues(alpha: 0.15),
+                              foregroundColor: AppColors.sage,
+                              child: Text(
+                                () {
+                                  final n = '${p['name']}';
+                                  return n.isNotEmpty
+                                      ? n.substring(0, 1).toUpperCase()
+                                      : '?';
+                                }(),
+                              ),
+                            ),
+                            title: Text('${p['name']}'),
+                            subtitle: Text('${p['sampleCount']} ảnh mẫu'),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline_rounded),
+                              onPressed: () => _delete('${p['personId']}'),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

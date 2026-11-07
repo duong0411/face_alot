@@ -119,76 +119,88 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                         const SizedBox(height: 10),
                         _ModeSwitch(
                           isAuto: isAuto,
-                          onChanged: (auto) => _mqtt.setMode(auto),
-                        ),
-                        const SizedBox(height: 22),
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 320),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          child: isAuto
-                              ? _AutoRules(
-                                  key: const ValueKey('auto'),
-                                  tempOn: _tempOn,
-                                  tempOff: _tempOff,
-                                  darkLight: _darkLight,
-                                  gasThr: _gasThr,
-                                  gasDoor: _gasDoor,
-                                  gasFan: _gasFan,
-                                  doorHoldSec: _doorHoldSec,
-                                  buzzerOnGas: _buzzerOnGas,
-                                  liveGas: v.gas,
-                                  onTempOn: (x) => setState(() {
-                                    _tempOn = x;
-                                    if (_tempOff >= _tempOn) {
-                                      _tempOff = _tempOn - 1;
-                                    }
-                                  }),
-                                  onTempOff: (x) =>
-                                      setState(() => _tempOff = x),
-                                  onDarkLight: (x) =>
-                                      setState(() => _darkLight = x),
-                                  onGasThr: (x) => setState(() => _gasThr = x),
-                                  onGasDoor: (x) =>
-                                      setState(() => _gasDoor = x),
-                                  onGasFan: (x) => setState(() => _gasFan = x),
-                                  onDoorHold: (x) =>
-                                      setState(() => _doorHoldSec = x),
-                                  onBuzzer: (x) =>
-                                      setState(() => _buzzerOnGas = x),
-                                  onSave: () async {
-                                    await _mqtt.saveRules(
-                                      tempFanOn: _tempOn,
-                                      tempFanOff: _tempOff,
-                                      darkLightOn: _darkLight,
-                                      gasThreshold: _gasThr.round(),
-                                      gasOpenDoor: _gasDoor,
-                                      gasFanOn: _gasFan,
-                                      doorHoldSec: _doorHoldSec.round(),
-                                      buzzerOnGas: _buzzerOnGas,
-                                    );
-                                    if (!mounted) return;
-                                    final messenger =
-                                        ScaffoldMessenger.of(this.context);
-                                    messenger.showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Đã lưu cấu hình tự động',
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                )
-                              : _ManualDevices(
-                                  key: const ValueKey('manual'),
-                                  lightOn: v.lightOn,
-                                  fanOn: v.fanOn,
-                                  doorDeg: v.door,
-                                  onLight: _mqtt.setLight,
-                                  onFan: _mqtt.setFan,
-                                  onOpenDoor: _mqtt.openDoor,
-                                  onCloseDoor: _mqtt.closeDoor,
+                          onChanged: (auto) async {
+                            await _mqtt.setMode(auto);
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  auto
+                                      ? 'AUTO: ESP theo rule cảm biến (OLED trang RULES)'
+                                      : 'Thủ công: điều khiển đèn / quạt / cửa trên app',
                                 ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          isAuto
+                              ? 'Đang AUTO — đèn/quạt theo cảm biến + rule dưới đây'
+                              : 'Đang Thủ công — bật/tắt thiết bị bên dưới',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: AppColors.inkSoft,
+                              ),
+                        ),
+                        const SizedBox(height: 16),
+                        if (!isAuto) ...[
+                          _ManualDevices(
+                            key: const ValueKey('manual'),
+                            lightOn: v.lightOn,
+                            fanOn: v.fanOn,
+                            doorDeg: v.door,
+                            onLight: _mqtt.setLight,
+                            onFan: _mqtt.setFan,
+                            onOpenDoor: _mqtt.openDoor,
+                            onCloseDoor: _mqtt.closeDoor,
+                          ),
+                          const SizedBox(height: 22),
+                        ],
+                        // Rule luôn chỉnh được (OLED đồng bộ khi Lưu); chỉ có hiệu lực khi AUTO
+                        _AutoRules(
+                          key: const ValueKey('rules'),
+                          tempOn: _tempOn,
+                          tempOff: _tempOff,
+                          darkLight: _darkLight,
+                          gasThr: _gasThr,
+                          gasDoor: _gasDoor,
+                          gasFan: _gasFan,
+                          doorHoldSec: _doorHoldSec,
+                          buzzerOnGas: _buzzerOnGas,
+                          liveGas: v.gas,
+                          onTempOn: (x) => setState(() {
+                            _tempOn = x;
+                            if (_tempOff >= _tempOn) {
+                              _tempOff = _tempOn - 1;
+                            }
+                          }),
+                          onTempOff: (x) => setState(() => _tempOff = x),
+                          onDarkLight: (x) => setState(() => _darkLight = x),
+                          onGasThr: (x) => setState(() => _gasThr = x),
+                          onGasDoor: (x) => setState(() => _gasDoor = x),
+                          onGasFan: (x) => setState(() => _gasFan = x),
+                          onDoorHold: (x) => setState(() => _doorHoldSec = x),
+                          onBuzzer: (x) => setState(() => _buzzerOnGas = x),
+                          onSave: () async {
+                            await _mqtt.saveRules(
+                              tempFanOn: _tempOn,
+                              tempFanOff: _tempOff,
+                              darkLightOn: _darkLight,
+                              gasThreshold: _gasThr.round(),
+                              gasOpenDoor: _gasDoor,
+                              gasFanOn: _gasFan,
+                              doorHoldSec: _doorHoldSec.round(),
+                              buzzerOnGas: _buzzerOnGas,
+                            );
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(this.context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Đã gửi rule xuống ESP — xem OLED trang RULES',
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -588,12 +600,12 @@ class _AutoRules extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Cấu hình tự động',
+          'Rule cảm biến (dùng khi AUTO)',
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 6),
         Text(
-          'Nhiệt độ & gas do bạn chỉnh trên điện thoại — ESP lưu EEPROM.',
+          'Lưu → ESP + OLED cập nhật ngay. Chỉ điều khiển thiết bị khi đang Thủ công.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppColors.inkSoft,
               ),

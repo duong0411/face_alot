@@ -1,18 +1,18 @@
 #import "FaceNcnnPlugin.h"
+#import <stdint.h>
+#import <stdlib.h>
 
+// Strong refs so the linker must pull face_engine.o from this static pod.
 void FaceNcnnTouch(void) {
-  // Real references — prevents dead-strip of C API from the static pod.
-  volatile void* keep[] = {
-      (void*)&face_ncnn_init,
-      (void*)&face_ncnn_release,
-      (void*)&face_ncnn_detect_embed,
-      (void*)&face_ncnn_cosine,
-  };
-  (void)keep;
-}
-
-__attribute__((constructor)) static void FaceNcnnCtor(void) {
-  FaceNcnnTouch();
+  volatile intptr_t keep = 0;
+  keep ^= (intptr_t)(void*)&face_ncnn_init;
+  keep ^= (intptr_t)(void*)&face_ncnn_release;
+  keep ^= (intptr_t)(void*)&face_ncnn_detect_embed;
+  keep ^= (intptr_t)(void*)&face_ncnn_cosine;
+  if (keep == 0x7fffffff) {
+    // Unreachable — prevents the compiler from deleting the XOR chain.
+    abort();
+  }
 }
 
 @implementation FaceNcnnPlugin

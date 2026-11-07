@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'face_ncnn'
-  s.version          = '1.0.5'
+  s.version          = '1.0.7'
   s.summary          = 'Face detect/recognize NCNN FFI for Face AIoT'
   s.description      = 'C API face_ncnn_* backed by ncnn'
   s.homepage         = 'https://github.com/duong0411/face_alot'
@@ -9,8 +9,7 @@ Pod::Spec.new do |s|
   s.source           = { :path => '.' }
   s.platform         = :ios, '15.0'
 
-  # IMPORTANT: keep C++ under this pod folder. CocoaPods path pods often
-  # silently drop source_files that live outside the podspec directory (../src).
+  # Keep C++ under this pod folder — CocoaPods path pods often drop ../src.
   s.source_files = [
     'Classes/**/*.{h,m,mm,cpp}',
     'Sources/**/*.{h,cpp}',
@@ -34,11 +33,13 @@ Pod::Spec.new do |s|
     fi
     test -d ncnn.framework
     test -d openmp.framework
-    ls -la Sources ncnn.framework openmp.framework
   CMD
 
   s.vendored_frameworks = 'ncnn.framework', 'openmp.framework'
 
+  # Do NOT use -all_load / -force_load here — CocoaPods already links the
+  # static framework once; force_load caused "5 duplicate symbols" on CI.
+  # AppDelegate calls FaceNcnnTouch() so face_engine.o is pulled in.
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
@@ -49,12 +50,10 @@ Pod::Spec.new do |s|
     'FRAMEWORK_SEARCH_PATHS' => '$(inherited) "${PODS_TARGET_SRCROOT}"',
     'OTHER_CPLUSPLUSFLAGS' => '-frtti -fexceptions -fvisibility=default',
     'OTHER_CFLAGS' => '-fvisibility=default',
-    # Pull every ObjC/C++ object from this static framework into the app
-    'OTHER_LDFLAGS' => '$(inherited) -Wl,-all_load',
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
   }
 
   s.user_target_xcconfig = {
-    'OTHER_LDFLAGS' => '$(inherited) -ObjC -force_load $(BUILT_PRODUCTS_DIR)/face_ncnn/face_ncnn.framework/face_ncnn',
+    'OTHER_LDFLAGS' => '$(inherited) -ObjC',
   }
 end

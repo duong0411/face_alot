@@ -40,13 +40,28 @@ class FaceNcnn {
 
   Future<void> ensureLoaded() async {
     if (ready) return;
-    _lib = _openLib();
-    _init = _lib!.lookupFunction<_InitNative, _InitDart>('face_ncnn_init');
-    _detect =
-        _lib!.lookupFunction<_DetectNative, _DetectDart>('face_ncnn_detect_embed');
-    _cosine = _lib!.lookupFunction<_CosNative, _CosDart>('face_ncnn_cosine');
-    _release =
-        _lib!.lookupFunction<_ReleaseNative, _ReleaseDart>('face_ncnn_release');
+    try {
+      _lib = _openLib();
+    } catch (e) {
+      throw StateError(
+        'Không mở được thư viện NCNN native ($e). '
+        'Android: dùng APK release. iOS: cần build có pod face_ncnn.',
+      );
+    }
+    try {
+      _init = _lib!.lookupFunction<_InitNative, _InitDart>('face_ncnn_init');
+      _detect = _lib!
+          .lookupFunction<_DetectNative, _DetectDart>('face_ncnn_detect_embed');
+      _cosine = _lib!.lookupFunction<_CosNative, _CosDart>('face_ncnn_cosine');
+      _release =
+          _lib!.lookupFunction<_ReleaseNative, _ReleaseDart>('face_ncnn_release');
+    } catch (e) {
+      throw StateError(
+        'Thiếu symbol face_ncnn_* trong app ($e).\n'
+        'Bản IPA cũ chưa gắn native NCNN. Hãy cài APK Android '
+        'hoặc IPA build mới (v1.0.2+) có face_ncnn.',
+      );
+    }
 
     final dir = await _prepareModels();
     final detP = p.join(dir, 'face_detect.param');

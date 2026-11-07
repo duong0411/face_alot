@@ -51,7 +51,11 @@ jobs:
         with:
           channel: stable
           cache: true
-      - run: flutter pub get
+      - name: Install CocoaPods deps (face_ncnn + ncnn)
+        run: |
+          flutter pub get
+          cd ios
+          pod install --repo-update
       - run: flutter build ios --release --no-codesign
       - name: Pack unsigned IPA
         run: |

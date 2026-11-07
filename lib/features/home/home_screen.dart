@@ -4,6 +4,7 @@ import '../../core/providers/auth_provider.dart';
 import '../auth/login_screen.dart';
 import '../face/face_register_screen.dart';
 import '../face/face_unlock_screen.dart';
+import 'smart_control_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -37,6 +38,15 @@ class HomeScreen extends StatelessWidget {
           const SizedBox(height: 6),
           Text(user?.email ?? '', style: const TextStyle(color: Colors.black54)),
           const SizedBox(height: 24),
+          _Card(
+            icon: Icons.home,
+            title: 'Điều khiển nhà',
+            subtitle: 'Thủ công / Tự động · đèn · quạt · rule cảm biến',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SmartControlScreen()),
+            ),
+          ),
           _Card(
             icon: Icons.face_retouching_natural,
             title: 'Đăng ký khuôn mặt',

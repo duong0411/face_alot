@@ -54,3 +54,6 @@ tools/*.zip
 assets/models/*.onnx
 assets/models/*.tflite
 assets/models/*.sim.onnx
+
+face_alot-release.apk
+*.apk

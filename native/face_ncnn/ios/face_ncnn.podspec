@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'face_ncnn'
-  s.version          = '1.0.1'
+  s.version          = '1.0.3'
   s.summary          = 'Face detect/recognize NCNN FFI for Face AIoT'
   s.description      = 'C API face_ncnn_* backed by ncnn'
   s.homepage         = 'https://github.com/duong0411/face_alot'
@@ -18,39 +18,31 @@ Pod::Spec.new do |s|
   s.header_mappings_dir = '../include'
 
   s.dependency 'Flutter'
-  s.library = 'c++'
+  s.libraries = 'c++'
   s.static_framework = true
 
-  # Download ncnn iOS (no vulkan) once
+  # ncnn-20250916-ios.zip ships classic .framework (NOT .xcframework)
   s.prepare_command = <<-CMD
     set -e
-    if [ ! -d "ncnn.xcframework" ]; then
-      echo "Downloading ncnn iOS xcframework..."
-      curl -L -o ncnn-ios.zip "https://github.com/Tencent/ncnn/releases/download/20250916/ncnn-20250916-ios.zip"
+    if [ ! -d "ncnn.framework" ] || [ ! -d "openmp.framework" ]; then
+      echo "Downloading ncnn iOS frameworks..."
+      curl -fL --retry 3 -o ncnn-ios.zip "https://github.com/Tencent/ncnn/releases/download/20250916/ncnn-20250916-ios.zip"
       unzip -qo ncnn-ios.zip
-      # find xcframework
-      FOUND=$(find . -maxdepth 3 -type d -name "ncnn.xcframework" | head -n 1)
-      if [ -z "$FOUND" ]; then
-        FOUND=$(find . -maxdepth 4 -type d -name "*.xcframework" | head -n 1)
-      fi
-      if [ -n "$FOUND" ] && [ "$FOUND" != "./ncnn.xcframework" ]; then
-        rm -rf ncnn.xcframework
-        mv "$FOUND" ./ncnn.xcframework
-      fi
       rm -f ncnn-ios.zip
-      # cleanup extract dirs except xcframework
-      find . -maxdepth 1 -type d -name "ncnn-*" -exec rm -rf {} +
     fi
-    test -d ncnn.xcframework
+    test -d ncnn.framework
+    test -d openmp.framework
+    ls -la ncnn.framework openmp.framework
   CMD
 
-  s.vendored_frameworks = 'ncnn.xcframework'
+  s.vendored_frameworks = 'ncnn.framework', 'openmp.framework'
 
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
     'CLANG_CXX_LIBRARY' => 'libc++',
-    'HEADER_SEARCH_PATHS' => '$(inherited) "${PODS_TARGET_SRCROOT}/../include" "${PODS_TARGET_SRCROOT}/Classes"',
+    'HEADER_SEARCH_PATHS' => '$(inherited) "${PODS_TARGET_SRCROOT}/../include" "${PODS_TARGET_SRCROOT}/Classes" "${PODS_TARGET_SRCROOT}/ncnn.framework/Headers"',
+    'FRAMEWORK_SEARCH_PATHS' => '$(inherited) "${PODS_TARGET_SRCROOT}"',
     'OTHER_CPLUSPLUSFLAGS' => '-frtti -fexceptions',
     # Keep C symbols for Dart FFI DynamicLibrary.process()
     'OTHER_LDFLAGS' => '$(inherited) -Wl,-all_load',
@@ -61,4 +53,3 @@ Pod::Spec.new do |s|
     'OTHER_LDFLAGS' => '$(inherited) -ObjC',
   }
 end
-

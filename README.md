@@ -53,9 +53,18 @@ Backend AloT đã chạy Docker/Cloudflare. App gọi:
 
 Đổi host: `--dart-define=API_BASE=https://...`
 
-## CI
+## CI / Release
 
-GitHub Actions: `.github/workflows/build.yml` → artifact **APK** + **IPA** (unsigned, cần Apple cert để ký).
+GitHub Actions (`.github/workflows/build.yml`):
+- Push `main` → build artifact APK + IPA unsigned
+- Push tag `v*` → **tạo GitHub Release** kèm APK (+ IPA unsigned)
+
+```bat
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+Face gallery 1:N lưu **MongoDB Docker**, matching từ xa qua `https://duynguyen.io.vn/api/faces/*`.
 
 ## Cấu trúc
 

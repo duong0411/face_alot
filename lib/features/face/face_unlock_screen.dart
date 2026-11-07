@@ -3,12 +3,13 @@ import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+
+import '../../core/api/face_api.dart';
 import '../../core/config.dart';
 import '../../core/mqtt/door_mqtt.dart';
 import '../../face_ncnn/face_ncnn_ffi.dart';
-import 'face_gallery.dart';
 
-/// Nhận diện realtime **1:N**: embedding probe so với toàn gallery.
+/// NCNN trên máy → embedding → **identify 1:N trên MongoDB** (API public).
 class FaceUnlockScreen extends StatefulWidget {
   const FaceUnlockScreen({super.key});
 
@@ -18,13 +19,14 @@ class FaceUnlockScreen extends StatefulWidget {
 
 class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
   CameraController? _cam;
-  final _gallery = FaceGallery();
+  final _api = FaceApi();
   final _mqtt = DoorMqtt();
   Timer? _timer;
   String _status = 'Khởi tạo...';
   String? _lastName;
   double _lastScore = 0;
-  List<FaceMatchHit> _topHits = [];
+  List<dynamic> _topHits = [];
+  int _gallerySize = 0;
   DateTime _lastOpen = DateTime.fromMillisecondsSinceEpoch(0);
   bool _processing = false;
 
@@ -37,9 +39,11 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
   Future<void> _setup() async {
     try {
       await FaceNcnn.instance.ensureLoaded();
-      await _gallery.load();
-      if (_gallery.profiles.isEmpty) {
-        setState(() => _status = 'Gallery trống — đăng ký ít nhất 1 người (1:N)');
+      final list = await _api.list();
+      _gallerySize = list.length;
+      if (list.isEmpty) {
+        setState(() =>
+            _status = 'MongoDB gallery trống — đăng ký mặt trên server trước');
         return;
       }
       final cams = await availableCameras();
@@ -58,9 +62,10 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
       setState(() {
         _cam = ctrl;
         _status =
-            '1:N · ${_gallery.count} người · ngưỡng ${AppConfig.matchThreshold}';
+            '1:N MongoDB · N=$_gallerySize · API duynguyen.io.vn';
       });
-      _timer = Timer.periodic(const Duration(milliseconds: 800), (_) => _tick());
+      _timer =
+          Timer.periodic(const Duration(milliseconds: 900), (_) => _tick());
     } catch (e) {
       setState(() => _status = 'Lỗi: $e');
     }
@@ -68,7 +73,6 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
 
   Future<void> _tick() async {
     if (_processing || _cam == null || !_cam!.value.isInitialized) return;
-    if (!mounted) return;
     _processing = true;
     try {
       final shot = await _cam!.takePicture();
@@ -78,7 +82,6 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
       final img = frame.image;
       final bd = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
       if (bd == null) return;
-
       final r = FaceNcnn.instance
           .infer(bd.buffer.asUint8List(), img.width, img.height);
       if (r.emb == null) {
@@ -90,47 +93,48 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
         return;
       }
 
-      // 1:N identify trên toàn gallery
-      final id = _gallery.identify(
-        r.emb!,
+      final id = await _api.identify(
+        embedding: r.emb!,
         threshold: AppConfig.matchThreshold,
         topK: 3,
-        cosineFn: FaceNcnn.instance.cosine,
       );
+      final accepted = id['accepted'] as Map<String, dynamic>?;
+      final hits = (id['hits'] as List?) ?? [];
+      _gallerySize = (id['gallerySize'] as num?)?.toInt() ?? _gallerySize;
 
       setState(() {
-        _topHits = id.hits;
-        _lastScore = id.bestScore;
-        if (id.accepted != null) {
-          _lastName = id.accepted!.name;
+        _topHits = hits;
+        if (accepted != null) {
+          _lastName = '${accepted['name']}';
+          _lastScore = (accepted['score'] as num).toDouble();
           _status =
-              'OK 1:N → ${id.accepted!.name} (${id.bestScore.toStringAsFixed(2)})';
-        } else if (id.best != null) {
+              'OK Mongo 1:N → $_lastName (${_lastScore.toStringAsFixed(2)})';
+        } else if (hits.isNotEmpty) {
+          final best = hits.first as Map<String, dynamic>;
           _lastName = null;
+          _lastScore = (best['score'] as num).toDouble();
           _status =
-              'Unknown · gần nhất: ${id.best!.profile.name} (${id.bestScore.toStringAsFixed(2)}) < ${id.threshold}';
+              'Unknown · gần: ${best['name']} (${_lastScore.toStringAsFixed(2)})';
         } else {
-          _lastName = null;
-          _status = 'Gallery trống';
+          _status = 'Gallery trống trên MongoDB';
         }
       });
 
-      if (id.accepted != null) {
+      if (accepted != null) {
         final now = DateTime.now();
-        if (now.difference(_lastOpen).inMilliseconds >= AppConfig.doorCooldownMs) {
+        if (now.difference(_lastOpen).inMilliseconds >=
+            AppConfig.doorCooldownMs) {
           _lastOpen = now;
-          await _mqtt.openDoor(name: id.accepted!.name);
+          final name = '${accepted['name']}';
+          await _mqtt.openDoor(name: name);
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                  '1:N match → mở cửa: ${id.accepted!.name} (${id.bestScore.toStringAsFixed(2)})'),
-            ),
+            SnackBar(content: Text('Mongo 1:N → mở cửa: $name')),
           );
         }
       }
     } catch (e) {
-      setState(() => _status = 'Infer lỗi: $e');
+      setState(() => _status = 'Lỗi: $e');
     } finally {
       _processing = false;
     }
@@ -147,7 +151,7 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Mở cửa 1:N')),
+      appBar: AppBar(title: const Text('Mở cửa 1:N (MongoDB)')),
       body: Column(
         children: [
           Expanded(
@@ -184,23 +188,21 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Top-K 1:N',
+                  Text('Top-K (server MongoDB)',
                       style: Theme.of(context).textTheme.titleSmall),
-                  ..._topHits.map(
-                    (h) => Text(
-                      '#${h.rank} ${h.profile.name}  ${h.score.toStringAsFixed(3)}'
-                      '${_lastName == h.profile.name ? "  ✓" : ""}',
-                    ),
-                  ),
+                  ..._topHits.map((h) {
+                    final m = h as Map<String, dynamic>;
+                    return Text(
+                      '#${m['rank']} ${m['name']}  ${(m['score'] as num).toStringAsFixed(3)}',
+                    );
+                  }),
                 ],
               ),
             ),
           Padding(
             padding: const EdgeInsets.all(12),
             child: Text(
-              _lastName == null
-                  ? 'Ngưỡng accept: ${AppConfig.matchThreshold} · N=${_gallery.count}'
-                  : 'Accepted: $_lastName (${_lastScore.toStringAsFixed(2)})',
+              'N=$_gallerySize · thr ${AppConfig.matchThreshold} · host API public',
             ),
           ),
         ],

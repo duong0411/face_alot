@@ -238,8 +238,10 @@ class _VitalsStrip extends StatelessWidget {
           _Metric(
             icon: Icons.air_rounded,
             label: 'Gas/1024',
-            value: v.gasAlert ? '${v.gas}!' : '${v.gas}',
-            warn: v.gasAlert,
+            value: v.gasSensorSuspect
+                ? 'Lỗi?'
+                : (v.gasAlert ? '${v.gas}!' : '${v.gas}'),
+            warn: v.gasAlert || v.gasSensorSuspect,
           ),
           _Metric(
             icon: Icons.wb_twilight_rounded,
@@ -453,21 +455,42 @@ class _ManualDevices extends StatelessWidget {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
-                  Text(
-                    doorDeg > 10 ? 'Đang mở' : 'Đang đóng',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.inkSoft,
-                          fontWeight: FontWeight.w600,
-                        ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: doorDeg > 10
+                          ? AppColors.sage.withValues(alpha: 0.18)
+                          : AppColors.inkSoft.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      doorDeg > 10 ? 'Đang mở' : 'Đang đóng',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: doorDeg > 10
+                                ? AppColors.sage
+                                : AppColors.inkSoft,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                doorDeg > 10
+                    ? 'Trạng thái: cửa đang mở'
+                    : 'Trạng thái: cửa đang đóng',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.inkSoft,
+                    ),
               ),
               const SizedBox(height: 14),
               Row(
                 children: [
                   Expanded(
                     child: FilledButton(
-                      onPressed: onOpenDoor,
+                      onPressed: doorDeg > 10 ? null : onOpenDoor,
                       child: const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12),
                         child: Text('Mở cửa'),
@@ -477,7 +500,7 @@ class _ManualDevices extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: onCloseDoor,
+                      onPressed: doorDeg > 10 ? onCloseDoor : null,
                       child: const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12),
                         child: Text('Đóng cửa'),
@@ -647,8 +670,11 @@ class _AutoRules extends StatelessWidget {
                 onChanged: onDarkLight,
               ),
               Text(
-                'Ngưỡng gas: ${gasThr.toStringAsFixed(0)} / 1024'
-                '  (đang đo: $liveGas)',
+                liveGas >= 1000
+                    ? 'Ngưỡng gas: ${gasThr.toStringAsFixed(0)} / 1024'
+                        ' (đang đo: $liveGas — kiểm tra dây MQ/A0)'
+                    : 'Ngưỡng gas: ${gasThr.toStringAsFixed(0)} / 1024'
+                        '  (đang đo: $liveGas)',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
               Slider(

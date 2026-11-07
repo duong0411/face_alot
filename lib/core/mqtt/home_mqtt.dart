@@ -27,6 +27,11 @@ class HomeVitals {
   int doorHoldSec = 5; // mở cửa bao lâu rồi đóng
   bool buzzerOnGas = true;
   static const int gasScaleMax = 1024;
+
+  bool get doorOpen => door > 10;
+
+  /// A0 nổi / hở mạch thường kẹt ~1023–1024
+  bool get gasSensorSuspect => gas >= 1000;
 }
 
 class HomeMqtt extends ChangeNotifier {
@@ -56,8 +61,12 @@ class HomeMqtt extends ChangeNotifier {
     client.subscribe(AppConfig.teleVitals, MqttQos.atMostOnce);
     client.subscribe(AppConfig.teleMode, MqttQos.atMostOnce);
     client.subscribe(AppConfig.teleRules, MqttQos.atMostOnce);
+    // Đèn/quạt wiring thực tế ngược topic led1 ↔ fan — swap khi đọc tele
     client.subscribe(AppConfig.teleRelay1, MqttQos.atMostOnce);
     client.subscribe(AppConfig.teleRelay2, MqttQos.atMostOnce);
+    client.subscribe(AppConfig.teleDoor, MqttQos.atMostOnce);
+    // Xin ESP đẩy lại rules hiện tại lên OLED/app
+    await _pub(AppConfig.cmndRulesGet, 'GET');
   }
 
   void _onMsg(List<MqttReceivedMessage<MqttMessage>>? events) {
@@ -81,8 +90,9 @@ class HomeMqtt extends ChangeNotifier {
         vitals.gas = (j['gas'] as num?)?.toInt() ?? vitals.gas;
         vitals.gasAlert = (j['gasAlert'] ?? 0) == 1;
         vitals.dark = (j['dark'] ?? 0) == 1;
-        vitals.lightOn = '${j['light']}' == 'ON';
-        vitals.fanOn = '${j['fan']}' == 'ON';
+        // Swap: ESP "light"=relay1 nhưng dây thực = quạt; "fan"=relay2 = đèn
+        vitals.fanOn = '${j['light']}' == 'ON';
+        vitals.lightOn = '${j['fan']}' == 'ON';
         vitals.door = (j['door'] as num?)?.toInt() ?? vitals.door;
         vitals.mode = '${j['mode'] ?? vitals.mode}';
       } else if (topic.contains('_mode')) {
@@ -90,6 +100,7 @@ class HomeMqtt extends ChangeNotifier {
         vitals.mode = '${j['value'] ?? vitals.mode}';
       } else if (topic.contains('_rules')) {
         final j = jsonDecode(payload) as Map<String, dynamic>;
+        if (j.containsKey('ack') && !j.containsKey('tempFanOn')) return;
         vitals.mode = '${j['mode'] ?? vitals.mode}';
         vitals.tempFanOn =
             (j['tempFanOn'] as num?)?.toDouble() ?? vitals.tempFanOn;
@@ -104,11 +115,28 @@ class HomeMqtt extends ChangeNotifier {
             (j['doorHoldSec'] as num?)?.toInt() ?? vitals.doorHoldSec;
         vitals.buzzerOnGas = (j['buzzerOnGas'] ?? 1) == 1;
       } else if (topic.contains('_led1')) {
-        final j = jsonDecode(payload) as Map<String, dynamic>;
-        vitals.lightOn = '${j['value']}' == 'ON';
-      } else if (topic.contains('_fan_')) {
+        // Topic led1 thực tế đang điều khiển quạt
         final j = jsonDecode(payload) as Map<String, dynamic>;
         vitals.fanOn = '${j['value']}' == 'ON';
+      } else if (topic.contains('_fan_')) {
+        // Topic fan thực tế đang điều khiển đèn
+        final j = jsonDecode(payload) as Map<String, dynamic>;
+        vitals.lightOn = '${j['value']}' == 'ON';
+      } else if (topic.contains('_door_')) {
+        final j = jsonDecode(payload) as Map<String, dynamic>;
+        final v = j['value'];
+        if (v is num) {
+          vitals.door = v.toInt();
+        } else if (v != null) {
+          final s = '$v'.toUpperCase();
+          if (s == 'ON' || s == 'OPEN') {
+            vitals.door = 90;
+          } else if (s == 'OFF' || s == 'CLOSE') {
+            vitals.door = 0;
+          } else {
+            vitals.door = int.tryParse('$v') ?? vitals.door;
+          }
+        }
       }
     } catch (_) {}
   }
@@ -129,21 +157,27 @@ class HomeMqtt extends ChangeNotifier {
     if (vitals.mode == 'AUTO') return;
     vitals.lightOn = on;
     notifyListeners();
-    await _pub(AppConfig.cmndRelay1, on ? 'ON' : 'OFF');
+    // Swap: đèn UI → topic fan (relay2)
+    await _pub(AppConfig.cmndRelay2, on ? 'ON' : 'OFF');
   }
 
   Future<void> setFan(bool on) async {
     if (vitals.mode == 'AUTO') return;
     vitals.fanOn = on;
     notifyListeners();
-    await _pub(AppConfig.cmndRelay2, on ? 'ON' : 'OFF');
+    // Swap: quạt UI → topic led1 (relay1)
+    await _pub(AppConfig.cmndRelay1, on ? 'ON' : 'OFF');
   }
 
   Future<void> openDoor() async {
+    vitals.door = 90;
+    notifyListeners();
     await _pub(AppConfig.doorTopic, 'ON');
   }
 
   Future<void> closeDoor() async {
+    vitals.door = 0;
+    notifyListeners();
     await _pub(AppConfig.doorTopic, 'OFF');
   }
 
@@ -177,7 +211,9 @@ class HomeMqtt extends ChangeNotifier {
       'doorHoldSec': vitals.doorHoldSec,
       'buzzerOnGas': buzzerOnGas ? 1 : 0,
     });
+    // Publish cả SET và POWER — firmware cũ/mới đều nhận
     await _pub(AppConfig.cmndRules, body);
+    await _pub(AppConfig.cmndRulesPower, body);
   }
 
   void disconnect() {

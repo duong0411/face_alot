@@ -18,7 +18,7 @@ bool g_ready = false;
 
 constexpr int kEmbDim = 128;
 constexpr int kDetSize = 320;
-constexpr float kDetConf = 0.7f;
+constexpr float kDetConf = 0.45f;
 
 struct Face {
   float x1, y1, x2, y2, score;
@@ -35,14 +35,15 @@ void l2_normalize(float* v, int n) {
   for (int i = 0; i < n; i++) v[i] = float(v[i] / s);
 }
 
-// YuNet-style decode for strides 8/16/32 (simplified, bbox only).
+// OpenCV YuNet decode: bbox = khoảng cách tới 4 cạnh ô lưới (không phải center+exp).
 void decode_stride(const ncnn::Mat& cls, const ncnn::Mat& obj, const ncnn::Mat& bbox,
                    int stride, int img_w, int img_h, float scale_x, float scale_y,
                    std::vector<Face>& faces) {
   const int feat_h = kDetSize / stride;
   const int feat_w = kDetSize / stride;
   const int num = feat_h * feat_w;
-  if (cls.w * cls.h * cls.c < num) return;
+  if ((int)(cls.total()) < num || (int)(obj.total()) < num) return;
+  if ((int)(bbox.total()) < num * 4) return;
 
   const float* cls_ptr = (const float*)cls.data;
   const float* obj_ptr = (const float*)obj.data;
@@ -54,18 +55,17 @@ void decode_stride(const ncnn::Mat& cls, const ncnn::Mat& obj, const ncnn::Mat& 
       const float score = cls_ptr[i] * obj_ptr[i];
       if (score < kDetConf) continue;
 
-      // YuNet bbox: dx, dy, dw, dh relative to grid (approx)
       const float* b = box_ptr + i * 4;
-      const float cx = (x + b[0]) * stride;
-      const float cy = (y + b[1]) * stride;
-      const float w = std::exp(b[2]) * stride;
-      const float h = std::exp(b[3]) * stride;
+      const float x1 = (x + 0.5f - b[0]) * stride;
+      const float y1 = (y + 0.5f - b[1]) * stride;
+      const float x2 = (x + 0.5f + b[2]) * stride;
+      const float y2 = (y + 0.5f + b[3]) * stride;
 
       Face f;
-      f.x1 = clampf((cx - w * 0.5f) / scale_x, 0.f, float(img_w - 1));
-      f.y1 = clampf((cy - h * 0.5f) / scale_y, 0.f, float(img_h - 1));
-      f.x2 = clampf((cx + w * 0.5f) / scale_x, 0.f, float(img_w - 1));
-      f.y2 = clampf((cy + h * 0.5f) / scale_y, 0.f, float(img_h - 1));
+      f.x1 = clampf(x1 / scale_x, 0.f, float(img_w - 1));
+      f.y1 = clampf(y1 / scale_y, 0.f, float(img_h - 1));
+      f.x2 = clampf(x2 / scale_x, 0.f, float(img_w - 1));
+      f.y2 = clampf(y2 / scale_y, 0.f, float(img_h - 1));
       f.score = score;
       if (f.x2 - f.x1 >= 12 && f.y2 - f.y1 >= 12) faces.push_back(f);
     }

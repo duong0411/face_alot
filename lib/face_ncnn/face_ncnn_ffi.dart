@@ -98,7 +98,8 @@ class FaceNcnn {
 
   Future<String> _prepareModels() async {
     final docs = await getApplicationSupportDirectory();
-    final out = Directory(p.join(docs.path, 'ncnn_models'));
+    // bump folder khi đổi model (YuNet → SCRFD-500m) để không dùng cache cũ
+    final out = Directory(p.join(docs.path, 'ncnn_models_v2_scrfd500m'));
     if (!out.existsSync()) out.createSync(recursive: true);
     const files = [
       'face_detect.param',
@@ -108,9 +109,10 @@ class FaceNcnn {
     ];
     for (final f in files) {
       final dest = File(p.join(out.path, f));
-      if (dest.existsSync() && dest.lengthSync() > 0) continue;
       final data = await rootBundle.load('assets/models/$f');
-      await dest.writeAsBytes(data.buffer.asUint8List(), flush: true);
+      final bytes = data.buffer.asUint8List();
+      if (dest.existsSync() && dest.lengthSync() == bytes.length) continue;
+      await dest.writeAsBytes(bytes, flush: true);
     }
     return out.path;
   }

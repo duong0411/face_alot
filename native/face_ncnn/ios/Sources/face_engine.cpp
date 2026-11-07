@@ -17,9 +17,10 @@ ncnn::Net g_rec;
 bool g_ready = false;
 
 constexpr int kEmbDim = 128;
-constexpr int kDetSize = 320;
-// OpenCV YuNet mặc định ~0.6–0.9; dùng sqrt(cls*obj) nên 0.5 ổn định hơn trên selfie.
-constexpr float kDetConf = 0.5f;
+// SCRFD-500m — model detect nhỏ nhất (nihui/ncnn-assets)
+constexpr int kDetTarget = 320;  // letterbox; multiple of 32
+constexpr float kDetConf = 0.3f;
+constexpr float kNmsIou = 0.45f;
 
 struct Face {
   float x1, y1, x2, y2, score;
@@ -36,50 +37,72 @@ void l2_normalize(float* v, int n) {
   for (int i = 0; i < n; i++) v[i] = float(v[i] / s);
 }
 
-// Khớp OpenCV modules/objdetect/src/face_detect.cpp (YuNet).
-void decode_stride(const ncnn::Mat& cls, const ncnn::Mat& obj, const ncnn::Mat& bbox,
-                   int stride, int img_w, int img_h, float scale_x, float scale_y,
-                   std::vector<Face>& faces) {
-  const int feat_h = kDetSize / stride;
-  const int feat_w = kDetSize / stride;
-  const int num = feat_h * feat_w;
-  if ((int)(cls.total()) < num || (int)(obj.total()) < num) return;
-  if ((int)(bbox.total()) < num * 4) return;
+// insightface SCRFD anchor generator
+ncnn::Mat generate_anchors(int base_size, float scale0, float scale1) {
+  ncnn::Mat anchors;
+  anchors.create(4, 2);
+  const float cx = 0.f, cy = 0.f;
+  const float ar = 1.f;
+  int r_w = (int)std::round(base_size / std::sqrt(ar));
+  int r_h = (int)std::round(r_w * ar);
+  float scales[2] = {scale0, scale1};
+  for (int j = 0; j < 2; j++) {
+    float rs_w = r_w * scales[j];
+    float rs_h = r_h * scales[j];
+    float* a = anchors.row(j);
+    a[0] = cx - rs_w * 0.5f;
+    a[1] = cy - rs_h * 0.5f;
+    a[2] = cx + rs_w * 0.5f;
+    a[3] = cy + rs_h * 0.5f;
+  }
+  return anchors;
+}
 
-  const float* cls_ptr = (const float*)cls.data;
-  const float* obj_ptr = (const float*)obj.data;
-  const float* box_ptr = (const float*)bbox.data;
+void generate_proposals(const ncnn::Mat& anchors, int feat_stride,
+                        const ncnn::Mat& score_blob, const ncnn::Mat& bbox_blob,
+                        float prob_threshold, std::vector<Face>& out) {
+  const int w = score_blob.w;
+  const int h = score_blob.h;
+  const int num_anchors = anchors.h;
 
-  for (int y = 0; y < feat_h; y++) {
-    for (int x = 0; x < feat_w; x++) {
-      const int i = y * feat_w + x;
-      float cls_s = clampf(cls_ptr[i], 0.f, 1.f);
-      float obj_s = clampf(obj_ptr[i], 0.f, 1.f);
-      const float score = std::sqrt(cls_s * obj_s);
-      if (score < kDetConf) continue;
+  for (int q = 0; q < num_anchors; q++) {
+    const float* anchor = anchors.row(q);
+    const ncnn::Mat score = score_blob.channel(q);
+    const ncnn::Mat bbox = bbox_blob.channel_range(q * 4, 4);
 
-      const float* b = box_ptr + i * 4;
-      const float cx = (x + b[0]) * stride;
-      const float cy = (y + b[1]) * stride;
-      const float bw = std::exp(b[2]) * stride;
-      const float bh = std::exp(b[3]) * stride;
-      const float x1 = cx - bw * 0.5f;
-      const float y1 = cy - bh * 0.5f;
-      const float x2 = cx + bw * 0.5f;
-      const float y2 = cy + bh * 0.5f;
+    float anchor_y = anchor[1];
+    const float anchor_w = anchor[2] - anchor[0];
+    const float anchor_h = anchor[3] - anchor[1];
 
-      Face f;
-      f.x1 = clampf(x1 / scale_x, 0.f, float(img_w - 1));
-      f.y1 = clampf(y1 / scale_y, 0.f, float(img_h - 1));
-      f.x2 = clampf(x2 / scale_x, 0.f, float(img_w - 1));
-      f.y2 = clampf(y2 / scale_y, 0.f, float(img_h - 1));
-      f.score = score;
-      if (f.x2 - f.x1 >= 12 && f.y2 - f.y1 >= 12) faces.push_back(f);
+    for (int i = 0; i < h; i++) {
+      float anchor_x = anchor[0];
+      for (int j = 0; j < w; j++) {
+        const int index = i * w + j;
+        const float prob = score[index];
+        if (prob >= prob_threshold) {
+          const float dx = bbox.channel(0)[index] * feat_stride;
+          const float dy = bbox.channel(1)[index] * feat_stride;
+          const float dw = bbox.channel(2)[index] * feat_stride;
+          const float dh = bbox.channel(3)[index] * feat_stride;
+
+          const float cx = anchor_x + anchor_w * 0.5f;
+          const float cy = anchor_y + anchor_h * 0.5f;
+          Face f;
+          f.x1 = cx - dx;
+          f.y1 = cy - dy;
+          f.x2 = cx + dw;
+          f.y2 = cy + dh;
+          f.score = prob;
+          out.push_back(f);
+        }
+        anchor_x += feat_stride;
+      }
+      anchor_y += feat_stride;
     }
   }
 }
 
-void nms(std::vector<Face>& faces, float iou_thr = 0.45f) {
+void nms(std::vector<Face>& faces, float iou_thr) {
   std::sort(faces.begin(), faces.end(),
             [](const Face& a, const Face& b) { return a.score > b.score; });
   std::vector<int> keep;
@@ -109,34 +132,85 @@ void nms(std::vector<Face>& faces, float iou_thr = 0.45f) {
 }
 
 std::vector<Face> detect_faces(const unsigned char* rgba, int width, int height) {
-  const float scale_x = float(kDetSize) / float(width);
-  const float scale_y = float(kDetSize) / float(height);
+  // letterbox → target (giữ tỉ lệ), pad bội 32
+  int w = width;
+  int h = height;
+  float scale = 1.f;
+  if (w > h) {
+    scale = float(kDetTarget) / float(w);
+    w = kDetTarget;
+    h = int(h * scale);
+  } else {
+    scale = float(kDetTarget) / float(h);
+    h = kDetTarget;
+    w = int(w * scale);
+  }
+  if (w < 1) w = 1;
+  if (h < 1) h = 1;
 
-  ncnn::Mat in = ncnn::Mat::from_pixels_resize(rgba, ncnn::Mat::PIXEL_RGBA2BGR, width,
-                                               height, kDetSize, kDetSize);
-  const float mean[3] = {0.f, 0.f, 0.f};
-  const float norm[3] = {1.f / 255.f, 1.f / 255.f, 1.f / 255.f};
-  in.substract_mean_normalize(mean, norm);
+  ncnn::Mat in = ncnn::Mat::from_pixels_resize(rgba, ncnn::Mat::PIXEL_RGBA2RGB, width,
+                                               height, w, h);
+
+  const int wpad = (w + 31) / 32 * 32 - w;
+  const int hpad = (h + 31) / 32 * 32 - h;
+  ncnn::Mat in_pad;
+  ncnn::copy_make_border(in, in_pad, hpad / 2, hpad - hpad / 2, wpad / 2,
+                         wpad - wpad / 2, ncnn::BORDER_CONSTANT, 0.f);
+
+  const float mean[3] = {127.5f, 127.5f, 127.5f};
+  const float norm[3] = {1.f / 128.f, 1.f / 128.f, 1.f / 128.f};
+  in_pad.substract_mean_normalize(mean, norm);
 
   ncnn::Extractor ex = g_det.create_extractor();
-  ex.input("input", in);
+  ex.input("input.1", in_pad);
 
-  ncnn::Mat cls8, cls16, cls32, obj8, obj16, obj32, b8, b16, b32;
-  ex.extract("cls_8", cls8);
-  ex.extract("cls_16", cls16);
-  ex.extract("cls_32", cls32);
-  ex.extract("obj_8", obj8);
-  ex.extract("obj_16", obj16);
-  ex.extract("obj_32", obj32);
-  ex.extract("bbox_8", b8);
-  ex.extract("bbox_16", b16);
-  ex.extract("bbox_32", b32);
+  std::vector<Face> proposals;
 
+  // blob names: scrfd_500m-opt2 (ncnn examples/scrfd.cpp)
+  {
+    ncnn::Mat score, bbox;
+    ex.extract("412", score);
+    ex.extract("415", bbox);
+    ncnn::Mat anchors = generate_anchors(16, 1.f, 2.f);
+    generate_proposals(anchors, 8, score, bbox, kDetConf, proposals);
+  }
+  {
+    ncnn::Mat score, bbox;
+    ex.extract("474", score);
+    ex.extract("477", bbox);
+    ncnn::Mat anchors = generate_anchors(64, 1.f, 2.f);
+    generate_proposals(anchors, 16, score, bbox, kDetConf, proposals);
+  }
+  {
+    ncnn::Mat score, bbox;
+    ex.extract("536", score);
+    ex.extract("539", bbox);
+    ncnn::Mat anchors = generate_anchors(256, 1.f, 2.f);
+    generate_proposals(anchors, 32, score, bbox, kDetConf, proposals);
+  }
+
+  nms(proposals, kNmsIou);
+
+  // map về toạ độ ảnh gốc
+  const float pad_x = wpad / 2.f;
+  const float pad_y = hpad / 2.f;
+  for (auto& f : proposals) {
+    float x1 = (f.x1 - pad_x) / scale;
+    float y1 = (f.y1 - pad_y) / scale;
+    float x2 = (f.x2 - pad_x) / scale;
+    float y2 = (f.y2 - pad_y) / scale;
+    f.x1 = clampf(x1, 0.f, float(width - 1));
+    f.y1 = clampf(y1, 0.f, float(height - 1));
+    f.x2 = clampf(x2, 0.f, float(width - 1));
+    f.y2 = clampf(y2, 0.f, float(height - 1));
+  }
+
+  // bỏ box quá nhỏ
   std::vector<Face> faces;
-  decode_stride(cls8, obj8, b8, 8, width, height, scale_x, scale_y, faces);
-  decode_stride(cls16, obj16, b16, 16, width, height, scale_x, scale_y, faces);
-  decode_stride(cls32, obj32, b32, 32, width, height, scale_x, scale_y, faces);
-  nms(faces);
+  faces.reserve(proposals.size());
+  for (const auto& f : proposals) {
+    if (f.x2 - f.x1 >= 12 && f.y2 - f.y1 >= 12) faces.push_back(f);
+  }
   return faces;
 }
 
@@ -146,7 +220,6 @@ bool embed_face(const unsigned char* rgba, int width, int height, const Face& f,
   int bw = x2 - x1, bh = y2 - y1;
   if (bw < 8 || bh < 8) return false;
 
-  // margin 20%
   const int mx = int(bw * 0.2f), my = int(bh * 0.2f);
   x1 = std::max(0, x1 - mx);
   y1 = std::max(0, y1 - my);
@@ -167,13 +240,9 @@ bool embed_face(const unsigned char* rgba, int width, int height, const Face& f,
   in.substract_mean_normalize(mean, norm);
 
   ncnn::Extractor ex = g_rec.create_extractor();
-  // MobileFaceNet converted input name
   ex.input("x", in);
   ncnn::Mat out;
-  if (ex.extract("fetch_name_0", out) != 0) {
-    // fallback first blob
-    return false;
-  }
+  if (ex.extract("fetch_name_0", out) != 0) return false;
   const int dim = std::min(kEmbDim, out.w * out.h * out.c);
   memcpy(out_emb, out.data, sizeof(float) * dim);
   for (int i = dim; i < kEmbDim; i++) out_emb[i] = 0;

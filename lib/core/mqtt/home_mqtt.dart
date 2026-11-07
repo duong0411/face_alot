@@ -11,7 +11,7 @@ import '../config.dart';
 class HomeVitals {
   double temp = 0;
   double humi = 0;
-  int gas = 0;
+  int gas = 0; // thang 0..1024 từ ESP
   bool gasAlert = false;
   bool dark = false;
   bool lightOn = false;
@@ -21,9 +21,12 @@ class HomeVitals {
   double tempFanOn = 30;
   double tempFanOff = 28;
   bool darkLightOn = true;
-  int gasThreshold = 500;
+  int gasThreshold = 512; // 0..1024
   bool gasOpenDoor = true;
   bool gasFanOn = true;
+  int doorHoldSec = 5; // mở cửa bao lâu rồi đóng
+  bool buzzerOnGas = true;
+  static const int gasScaleMax = 1024;
 }
 
 class HomeMqtt extends ChangeNotifier {
@@ -97,6 +100,9 @@ class HomeMqtt extends ChangeNotifier {
             (j['gasThreshold'] as num?)?.toInt() ?? vitals.gasThreshold;
         vitals.gasOpenDoor = (j['gasOpenDoor'] ?? 1) == 1;
         vitals.gasFanOn = (j['gasFanOn'] ?? 1) == 1;
+        vitals.doorHoldSec =
+            (j['doorHoldSec'] as num?)?.toInt() ?? vitals.doorHoldSec;
+        vitals.buzzerOnGas = (j['buzzerOnGas'] ?? 1) == 1;
       } else if (topic.contains('_led1')) {
         final j = jsonDecode(payload) as Map<String, dynamic>;
         vitals.lightOn = '${j['value']}' == 'ON';
@@ -148,22 +154,28 @@ class HomeMqtt extends ChangeNotifier {
     required int gasThreshold,
     required bool gasOpenDoor,
     required bool gasFanOn,
+    required int doorHoldSec,
+    required bool buzzerOnGas,
   }) async {
     vitals.tempFanOn = tempFanOn;
     vitals.tempFanOff = tempFanOff;
     vitals.darkLightOn = darkLightOn;
-    vitals.gasThreshold = gasThreshold;
+    vitals.gasThreshold = gasThreshold.clamp(0, HomeVitals.gasScaleMax);
     vitals.gasOpenDoor = gasOpenDoor;
     vitals.gasFanOn = gasFanOn;
+    vitals.doorHoldSec = doorHoldSec.clamp(1, 60);
+    vitals.buzzerOnGas = buzzerOnGas;
     notifyListeners();
     final body = jsonEncode({
       'mode': vitals.mode,
       'tempFanOn': tempFanOn,
       'tempFanOff': tempFanOff,
       'darkLightOn': darkLightOn ? 1 : 0,
-      'gasThreshold': gasThreshold,
+      'gasThreshold': vitals.gasThreshold,
       'gasOpenDoor': gasOpenDoor ? 1 : 0,
       'gasFanOn': gasFanOn ? 1 : 0,
+      'doorHoldSec': vitals.doorHoldSec,
+      'buzzerOnGas': buzzerOnGas ? 1 : 0,
     });
     await _pub(AppConfig.cmndRules, body);
   }

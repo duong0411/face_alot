@@ -21,6 +21,8 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
   late double _gasThr;
   late bool _gasDoor;
   late bool _gasFan;
+  late double _doorHoldSec;
+  late bool _buzzerOnGas;
 
   @override
   void initState() {
@@ -28,9 +30,11 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
     _tempOn = 30;
     _tempOff = 28;
     _darkLight = true;
-    _gasThr = 500;
+    _gasThr = 512;
     _gasDoor = true;
     _gasFan = true;
+    _doorHoldSec = 5;
+    _buzzerOnGas = true;
     _boot();
   }
 
@@ -59,6 +63,8 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
       _gasThr = v.gasThreshold.toDouble();
       _gasDoor = v.gasOpenDoor;
       _gasFan = v.gasFanOn;
+      _doorHoldSec = v.doorHoldSec.toDouble();
+      _buzzerOnGas = v.buzzerOnGas;
     });
   }
 
@@ -129,6 +135,9 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                                   gasThr: _gasThr,
                                   gasDoor: _gasDoor,
                                   gasFan: _gasFan,
+                                  doorHoldSec: _doorHoldSec,
+                                  buzzerOnGas: _buzzerOnGas,
+                                  liveGas: v.gas,
                                   onTempOn: (x) => setState(() {
                                     _tempOn = x;
                                     if (_tempOff >= _tempOn) {
@@ -143,6 +152,10 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                                   onGasDoor: (x) =>
                                       setState(() => _gasDoor = x),
                                   onGasFan: (x) => setState(() => _gasFan = x),
+                                  onDoorHold: (x) =>
+                                      setState(() => _doorHoldSec = x),
+                                  onBuzzer: (x) =>
+                                      setState(() => _buzzerOnGas = x),
                                   onSave: () async {
                                     await _mqtt.saveRules(
                                       tempFanOn: _tempOn,
@@ -151,6 +164,8 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                                       gasThreshold: _gasThr.round(),
                                       gasOpenDoor: _gasDoor,
                                       gasFanOn: _gasFan,
+                                      doorHoldSec: _doorHoldSec.round(),
+                                      buzzerOnGas: _buzzerOnGas,
                                     );
                                     if (!mounted) return;
                                     final messenger =
@@ -210,8 +225,8 @@ class _VitalsStrip extends StatelessWidget {
           ),
           _Metric(
             icon: Icons.air_rounded,
-            label: 'Khí gas',
-            value: v.gasAlert ? 'Cảnh báo' : '${v.gas}',
+            label: 'Gas/1024',
+            value: v.gasAlert ? '${v.gas}!' : '${v.gas}',
             warn: v.gasAlert,
           ),
           _Metric(
@@ -534,12 +549,17 @@ class _AutoRules extends StatelessWidget {
     required this.gasThr,
     required this.gasDoor,
     required this.gasFan,
+    required this.doorHoldSec,
+    required this.buzzerOnGas,
+    required this.liveGas,
     required this.onTempOn,
     required this.onTempOff,
     required this.onDarkLight,
     required this.onGasThr,
     required this.onGasDoor,
     required this.onGasFan,
+    required this.onDoorHold,
+    required this.onBuzzer,
     required this.onSave,
   });
 
@@ -549,12 +569,17 @@ class _AutoRules extends StatelessWidget {
   final double gasThr;
   final bool gasDoor;
   final bool gasFan;
+  final double doorHoldSec;
+  final bool buzzerOnGas;
+  final int liveGas;
   final ValueChanged<double> onTempOn;
   final ValueChanged<double> onTempOff;
   final ValueChanged<bool> onDarkLight;
   final ValueChanged<double> onGasThr;
   final ValueChanged<bool> onGasDoor;
   final ValueChanged<bool> onGasFan;
+  final ValueChanged<double> onDoorHold;
+  final ValueChanged<bool> onBuzzer;
   final VoidCallback onSave;
 
   @override
@@ -566,13 +591,20 @@ class _AutoRules extends StatelessWidget {
           'Cấu hình tự động',
           style: Theme.of(context).textTheme.titleMedium,
         ),
+        const SizedBox(height: 6),
+        Text(
+          'Nhiệt độ & gas do bạn chỉnh trên điện thoại — ESP lưu EEPROM.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AppColors.inkSoft,
+              ),
+        ),
         const SizedBox(height: 10),
         SoftPanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Bật quạt khi nóng hơn ${tempOn.toStringAsFixed(0)}°C',
+                'Bật quạt khi ≥ ${tempOn.toStringAsFixed(0)}°C',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
               Slider(
@@ -584,7 +616,7 @@ class _AutoRules extends StatelessWidget {
                 onChanged: onTempOn,
               ),
               Text(
-                'Tắt quạt khi mát hơn ${tempOff.toStringAsFixed(0)}°C',
+                'Tắt quạt khi ≤ ${tempOff.toStringAsFixed(0)}°C',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
               Slider(
@@ -603,30 +635,53 @@ class _AutoRules extends StatelessWidget {
                 onChanged: onDarkLight,
               ),
               Text(
-                'Ngưỡng khí gas: ${gasThr.toStringAsFixed(0)}',
+                'Ngưỡng gas: ${gasThr.toStringAsFixed(0)} / 1024'
+                '  (đang đo: $liveGas)',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
               Slider(
-                min: 100,
-                max: 900,
-                divisions: 40,
-                value: gasThr.clamp(100, 900),
+                min: 0,
+                max: HomeVitals.gasScaleMax.toDouble(),
+                divisions: 64,
+                value: gasThr.clamp(0, HomeVitals.gasScaleMax.toDouble()),
                 activeColor: AppColors.amber,
                 onChanged: onGasThr,
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Có gas → mở cửa'),
+                title: const Text('Gas vượt ngưỡng → mở cửa'),
+                subtitle: Text(
+                  'Mở ${_doorHoldLabel(doorHoldSec)} rồi tự đóng',
+                ),
                 value: gasDoor,
                 activeThumbColor: AppColors.sage,
                 onChanged: onGasDoor,
               ),
+              Text(
+                'Giữ cửa mở: ${doorHoldSec.toStringAsFixed(0)} giây',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              Slider(
+                min: 1,
+                max: 30,
+                divisions: 29,
+                value: doorHoldSec.clamp(1, 30),
+                activeColor: AppColors.sage,
+                onChanged: onDoorHold,
+              ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Có gas → bật quạt'),
+                title: const Text('Gas → bật quạt'),
                 value: gasFan,
                 activeThumbColor: AppColors.sage,
                 onChanged: onGasFan,
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Còi báo động khi có gas'),
+                value: buzzerOnGas,
+                activeThumbColor: AppColors.amber,
+                onChanged: onBuzzer,
               ),
               const SizedBox(height: 8),
               SizedBox(
@@ -645,4 +700,6 @@ class _AutoRules extends StatelessWidget {
       ],
     );
   }
+
+  static String _doorHoldLabel(double sec) => '${sec.round()} giây';
 }

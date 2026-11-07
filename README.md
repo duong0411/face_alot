@@ -6,10 +6,14 @@ App Flutter nhà thông minh: **đăng nhập API Docker**, **đăng ký khuôn 
 
 - Auth: login / register / quên mật khẩu → `https://duynguyen.io.vn/api/auth/*`
 - Face **detect + recognize** chạy **C/C++ NCNN**, gọi qua **Dart FFI**
-- Đăng ký mặt trước → camera realtime match → publish MQTT mở cửa
+- Nhận diện **1:N**: probe so khớp toàn gallery (max cosine / người, top-K + ngưỡng + margin)
+- Đăng ký nhiều người / nhiều mẫu → realtime identify → MQTT mở cửa
+- Smart home **MANUAL / AUTO** (đèn, quạt, rule nhiệt/gas/LDR)
 - Broker: `wss://mqtt.duynguyen.io.vn/mqtt`
   - `cmnd/123_face_livingroom/POWER` JSON `{"name","action":"OPEN"}`
   - `cmnd/123_door_livingroom1/POWER` = `ON`
+  - `cmnd/123_mode/POWER` `AUTO|MANUAL`
+  - `cmnd/123_rules/SET` JSON rules
 
 ## Model (từ `stem_chamcong_face` → NCNN)
 

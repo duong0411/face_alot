@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
@@ -7,6 +8,7 @@ import '../../core/providers/auth_provider.dart';
 import '../../face_ncnn/face_ncnn_ffi.dart';
 import 'face_gallery.dart';
 
+/// Đăng ký khuôn mặt vào gallery **1:N** (nhiều người, mỗi người nhiều mẫu).
 class FaceRegisterScreen extends StatefulWidget {
   const FaceRegisterScreen({super.key});
 
@@ -20,6 +22,7 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
   final _nameCtrl = TextEditingController();
   String _status = 'Đang khởi tạo NCNN...';
   bool _busy = false;
+  String? _lastPersonId;
 
   @override
   void initState() {
@@ -46,7 +49,8 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
       if (!mounted) return;
       setState(() {
         _cam = ctrl;
-        _status = 'Căn mặt vào khung rồi bấm Đăng ký';
+        _status =
+            'Gallery 1:N: ${_gallery.count} người / ${_gallery.sampleCount} mẫu\nNhập tên → Đăng ký người mới (hoặc Thêm mẫu)';
         _nameCtrl.text = context.read<AuthProvider>().user?.name ?? '';
       });
     } catch (e) {
@@ -54,48 +58,86 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
     }
   }
 
-  Future<void> _register() async {
+  Future<Float32List?> _captureEmbedding() async {
+    final shot = await _cam!.takePicture();
+    final bytes = await shot.readAsBytes();
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final decoded = frame.image;
+    final bd = await decoded.toByteData(format: ui.ImageByteFormat.rawRgba);
+    if (bd == null) throw Exception('Không đọc được ảnh');
+    final r = FaceNcnn.instance
+        .infer(bd.buffer.asUint8List(), decoded.width, decoded.height);
+    if (r.emb == null || r.box == null) {
+      throw Exception('Không thấy khuôn mặt — thử lại');
+    }
+    return r.emb;
+  }
+
+  Future<void> _registerNew() async {
     if (_busy || _cam == null || !_cam!.value.isInitialized) return;
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nhập tên người cần đăng ký')),
+      );
+      return;
+    }
     setState(() {
       _busy = true;
-      _status = 'Đang chụp & trích xuất embedding...';
+      _status = 'Đang đăng ký người mới vào gallery 1:N...';
     });
     try {
-      final shot = await _cam!.takePicture();
-      final bytes = await shot.readAsBytes();
-      final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      final decoded = frame.image;
-      final w = decoded.width;
-      final h = decoded.height;
-      final bd = await decoded.toByteData(format: ui.ImageByteFormat.rawRgba);
-      if (bd == null) throw Exception('Không đọc được ảnh');
-      final rgba = bd.buffer.asUint8List();
-      final r = FaceNcnn.instance.infer(rgba, w, h);
-      if (r.emb == null || r.box == null) {
-        throw Exception('Không thấy khuôn mặt — thử lại');
-      }
+      final emb = await _captureEmbedding();
+      if (emb == null) throw Exception('Embedding rỗng');
+      final profile = await _gallery.registerPerson(name: name, embedding: emb);
+      _lastPersonId = profile.id;
       if (!mounted) return;
-      final user = context.read<AuthProvider>().user;
-      final name = _nameCtrl.text.trim().isEmpty
-          ? (user?.name ?? 'User')
-          : _nameCtrl.text.trim();
-      await _gallery.upsert(FaceProfile(
-        id: user?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-        name: name,
-        embedding: r.emb!,
-      ));
-      if (!mounted) return;
-      setState(() =>
-          _status = 'Đã đăng ký: $name (det ${r.box!.score.toStringAsFixed(2)})');
+      setState(() => _status =
+          'Đã thêm "${profile.name}" (id ${profile.id})\nGallery: ${_gallery.count} người / ${_gallery.sampleCount} mẫu');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đăng ký mặt thành công: $name')),
+        SnackBar(content: Text('1:N — đã đăng ký: ${profile.name}')),
       );
     } catch (e) {
       setState(() => _status = 'Lỗi: $e');
     } finally {
       setState(() => _busy = false);
     }
+  }
+
+  Future<void> _addSample() async {
+    if (_busy || _cam == null) return;
+    final id = _lastPersonId;
+    if (id == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Đăng ký người mới trước, rồi thêm mẫu')),
+      );
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _status = 'Thêm mẫu embedding cho người vừa đăng ký...';
+    });
+    try {
+      final emb = await _captureEmbedding();
+      if (emb == null) throw Exception('Embedding rỗng');
+      await _gallery.addSample(id, emb);
+      if (!mounted) return;
+      setState(() => _status =
+          'Đã thêm mẫu. Gallery: ${_gallery.count} người / ${_gallery.sampleCount} mẫu');
+    } catch (e) {
+      setState(() => _status = 'Lỗi: $e');
+    } finally {
+      setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _deletePerson(FaceProfile p) async {
+    await _gallery.remove(p.id);
+    if (_lastPersonId == p.id) _lastPersonId = null;
+    setState(() => _status =
+        'Đã xoá ${p.name}. Còn ${_gallery.count} người trong gallery 1:N');
   }
 
   @override
@@ -108,33 +150,59 @@ class _FaceRegisterScreenState extends State<FaceRegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Đăng ký khuôn mặt')),
+      appBar: AppBar(title: const Text('Đăng ký mặt (1:N)')),
       body: Column(
         children: [
           Expanded(
+            flex: 3,
             child: _cam == null || !_cam!.value.isInitialized
                 ? Center(child: Text(_status, textAlign: TextAlign.center))
                 : CameraPreview(_cam!),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
+          Expanded(
+            flex: 2,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
               children: [
                 Text(_status, textAlign: TextAlign.center),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _nameCtrl,
                   decoration: const InputDecoration(
-                    labelText: 'Tên hiển thị',
+                    labelText: 'Tên người (mỗi người = 1 mục trong 1:N)',
                     border: OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 10),
-                FilledButton(
-                  onPressed: _busy ? null : _register,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-                    child: Text('Đăng ký mặt'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _busy ? null : _registerNew,
+                        child: const Text('Đăng ký người mới'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _busy ? null : _addSample,
+                        child: const Text('Thêm mẫu'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text('Danh sách gallery (${_gallery.count})',
+                    style: Theme.of(context).textTheme.titleSmall),
+                ..._gallery.profiles.map(
+                  (p) => ListTile(
+                    dense: true,
+                    title: Text(p.name),
+                    subtitle: Text('${p.embeddings.length} mẫu · ${p.id}'),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () => _deletePerson(p),
+                    ),
                   ),
                 ),
               ],

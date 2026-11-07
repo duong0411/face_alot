@@ -58,6 +58,26 @@ jobs:
           cd ios
           pod install --verbose
       - run: flutter build ios --release --no-codesign
+      - name: Verify face_ncnn_init is linked
+        run: |
+          set -e
+          BIN="build/ios/iphoneos/Runner.app/Runner"
+          echo "Binary size: $(wc -c < "$BIN") bytes"
+          nm -gU "$BIN" | grep -E 'face_ncnn_init|face_ncnn_detect' || true
+          # Also search string table (Release may strip some nm visibility)
+          if ! strings "$BIN" | grep -q 'face_ncnn_init'; then
+            echo "ERROR: face_ncnn_init not found in Runner — C++ sources were not linked"
+            # Show what from face_ncnn did link
+            strings "$BIN" | grep -i face_ncnn | head -50 || true
+            exit 1
+          fi
+          # Expect a much larger binary once ncnn static libs are pulled in
+          SIZE=$(wc -c < "$BIN")
+          if [ "$SIZE" -lt 1000000 ]; then
+            echo "ERROR: Runner binary too small ($SIZE) — ncnn likely not linked"
+            exit 1
+          fi
+          echo "OK: face_ncnn symbols present, size=$SIZE"
       - name: Pack unsigned IPA
         run: |
           mkdir -p Payload

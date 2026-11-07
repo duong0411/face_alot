@@ -32,7 +32,7 @@ target 'Runner' do
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
-  # Native NCNN face FFI
+  # Native NCNN face FFI (sources must live under this pod path)
   pod 'face_ncnn', :path => '../native/face_ncnn/ios'
 end
 
@@ -45,6 +45,27 @@ post_install do |installer|
         '$(inherited)',
         'PERMISSION_CAMERA=1',
       ]
+      if target.name == 'face_ncnn'
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        config.build_settings['GCC_SYMBOLS_PRIVATE_EXTERN'] = 'NO'
+        config.build_settings['DEAD_CODE_STRIPPING'] = 'NO'
+      end
     end
+  end
+
+  # Ensure Runner force-loads the static face_ncnn binary (contains face_ncnn_*).
+  installer.aggregate_targets.each do |aggregate|
+    aggregate.user_project.native_targets.each do |native|
+      next unless native.name == 'Runner'
+      native.build_configurations.each do |config|
+        ld = config.build_settings['OTHER_LDFLAGS'] || '$(inherited)'
+        ld = ld.join(' ') if ld.is_a?(Array)
+        force = '-force_load $(BUILT_PRODUCTS_DIR)/face_ncnn/face_ncnn.framework/face_ncnn'
+        unless ld.include?('face_ncnn.framework/face_ncnn')
+          config.build_settings['OTHER_LDFLAGS'] = "#{ld} -ObjC #{force}"
+        end
+      end
+    end
+    aggregate.user_project.save
   end
 end

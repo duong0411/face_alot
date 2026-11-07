@@ -1,8 +1,7 @@
 #import "FaceNcnnPlugin.h"
 
-@implementation FaceNcnnPlugin
-+ (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
-  // No MethodChannel — Dart uses FFI. Keep symbols alive:
+void FaceNcnnTouch(void) {
+  // Real references — prevents dead-strip of C API from the static pod.
   volatile void* keep[] = {
       (void*)&face_ncnn_init,
       (void*)&face_ncnn_release,
@@ -10,5 +9,14 @@
       (void*)&face_ncnn_cosine,
   };
   (void)keep;
+}
+
+__attribute__((constructor)) static void FaceNcnnCtor(void) {
+  FaceNcnnTouch();
+}
+
+@implementation FaceNcnnPlugin
++ (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
+  FaceNcnnTouch();
 }
 @end

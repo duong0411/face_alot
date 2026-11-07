@@ -59,7 +59,7 @@ class FaceNcnn {
       throw StateError(
         'Thiếu symbol face_ncnn_* trong app ($e).\n'
         'Bản IPA cũ chưa gắn native NCNN. Hãy cài APK Android '
-        'hoặc IPA build mới (v1.0.2+) có face_ncnn.',
+        'hoặc IPA build mới (v1.0.5+) có face_ncnn.',
       );
     }
 

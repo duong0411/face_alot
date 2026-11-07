@@ -7,7 +7,7 @@ Pod::Spec.new do |s|
   s.license          = { :type => 'MIT' }
   s.author           = { 'duong0411' => 'duong0411@users.noreply.github.com' }
   s.source           = { :path => '.' }
-  s.platform         = :ios, '13.0'
+  s.platform         = :ios, '15.0'
 
   s.source_files = [
     'Classes/**/*.{h,m,mm,cpp}',

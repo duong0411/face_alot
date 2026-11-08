@@ -1,6 +1,3 @@
-import 'dart:async';
-import 'dart:ui' as ui;
-
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
@@ -8,6 +5,7 @@ import '../../core/api/face_api.dart';
 import '../../core/config.dart';
 import '../../core/mqtt/door_mqtt.dart';
 import '../../core/theme/app_theme.dart';
+import '../../face_ncnn/camera_rgba.dart';
 import '../../face_ncnn/face_ncnn_ffi.dart';
 import 'face_register_screen.dart';
 
@@ -19,10 +17,11 @@ class FaceUnlockScreen extends StatefulWidget {
 }
 
 class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
+  static const _minInferGap = Duration(milliseconds: 280);
+
   CameraController? _cam;
   final _api = FaceApi();
   final _mqtt = DoorMqtt();
-  Timer? _timer;
   String _status = 'Đang chuẩn bị...';
   String? _lastName;
   double _lastScore = 0;
@@ -31,7 +30,9 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
   bool _emptyGallery = false;
   bool _camFailed = false;
   DateTime _lastOpen = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastInfer = DateTime.fromMillisecondsSinceEpoch(0);
   bool _processing = false;
+  bool _streaming = false;
 
   @override
   void initState() {
@@ -64,20 +65,41 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
         (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cams.first,
       );
-      final ctrl = CameraController(
-        front,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.bgra8888,
-      );
-      await ctrl.initialize();
-      if (!mounted) return;
+
+      CameraController? ctrl;
+      Object? lastErr;
+      for (final fmt in [
+        ImageFormatGroup.bgra8888,
+        ImageFormatGroup.yuv420,
+      ]) {
+        final c = CameraController(
+          front,
+          ResolutionPreset.medium,
+          enableAudio: false,
+          imageFormatGroup: fmt,
+        );
+        try {
+          await c.initialize();
+          ctrl = c;
+          break;
+        } catch (e) {
+          lastErr = e;
+          await c.dispose();
+        }
+      }
+      if (ctrl == null) {
+        throw lastErr ?? StateError('Không khởi tạo camera');
+      }
+
+      if (!mounted) {
+        await ctrl.dispose();
+        return;
+      }
       setState(() {
         _cam = ctrl;
-        _status = 'Nhìn thẳng vào khung';
+        _status = 'Đang nhận diện...';
       });
-      _timer =
-          Timer.periodic(const Duration(milliseconds: 900), (_) => _tick());
+      await _startStream();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -87,22 +109,43 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
     }
   }
 
-  Future<void> _tick() async {
-    if (_processing || _cam == null || !_cam!.value.isInitialized) return;
-    _processing = true;
+  Future<void> _startStream() async {
+    final cam = _cam;
+    if (cam == null || !cam.value.isInitialized || _streaming) return;
+    await cam.startImageStream(_onFrame);
+    _streaming = true;
+  }
+
+  Future<void> _stopStream() async {
+    final cam = _cam;
+    if (cam == null || !_streaming) {
+      _streaming = false;
+      return;
+    }
     try {
-      final shot = await _cam!.takePicture();
-      final bytes = await shot.readAsBytes();
-      final codec = await ui.instantiateImageCodec(
-        bytes,
-        targetWidth: 640,
-      );
-      final frame = await codec.getNextFrame();
-      final img = frame.image;
-      final bd = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
-      if (bd == null) return;
-      final r = FaceNcnn.instance
-          .infer(bd.buffer.asUint8List(), img.width, img.height);
+      if (cam.value.isStreamingImages) {
+        await cam.stopImageStream();
+      }
+    } catch (_) {}
+    _streaming = false;
+  }
+
+  void _onFrame(CameraImage image) {
+    if (!mounted || _processing) return;
+    final now = DateTime.now();
+    if (now.difference(_lastInfer) < _minInferGap) return;
+    _lastInfer = now;
+    _processing = true;
+    // ignore: discarded_futures
+    _processFrame(image).whenComplete(() => _processing = false);
+  }
+
+  Future<void> _processFrame(CameraImage image) async {
+    try {
+      final frame = cameraImageToRgba(image, maxSide: 640);
+      if (frame == null) return;
+
+      final r = FaceNcnn.instance.infer(frame.bytes, frame.width, frame.height);
       if (r.emb == null) {
         if (!mounted) return;
         setState(() {
@@ -118,10 +161,11 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
         threshold: AppConfig.matchThreshold,
         topK: 3,
       );
+      if (!mounted) return;
+
       final accepted = id['accepted'] as Map<String, dynamic>?;
       _gallerySize = (id['gallerySize'] as num?)?.toInt() ?? _gallerySize;
 
-      if (!mounted) return;
       setState(() {
         if (accepted != null) {
           _matched = true;
@@ -138,16 +182,15 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
             _status =
                 'Chưa khớp · gần nhất ${_lastScore.toStringAsFixed(2)}';
           } else {
-            _status = 'Chưa có dữ liệu khuôn mặt';
+            _status = 'Đang nhận diện...';
           }
         }
       });
 
       if (accepted != null) {
-        final now = DateTime.now();
-        if (now.difference(_lastOpen).inMilliseconds >=
-            AppConfig.doorCooldownMs) {
-          _lastOpen = now;
+        final t = DateTime.now();
+        if (t.difference(_lastOpen).inMilliseconds >= AppConfig.doorCooldownMs) {
+          _lastOpen = t;
           final name = '${accepted['name']}';
           await _mqtt.openDoor(name: name);
           if (!mounted) return;
@@ -159,8 +202,6 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _status = 'Lỗi: $e');
-    } finally {
-      _processing = false;
     }
   }
 
@@ -170,21 +211,33 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
       MaterialPageRoute(builder: (_) => const FaceRegisterScreen()),
     );
     if (!mounted) return;
-    _timer?.cancel();
+    await _stopStream();
     await _cam?.dispose();
     _cam = null;
     setState(() {
       _emptyGallery = false;
       _camFailed = false;
       _status = 'Đang chuẩn bị...';
+      _matched = false;
+      _lastName = null;
     });
     await _setup();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
-    _cam?.dispose();
+    // stopImageStream must finish before dispose; fire-and-forget is ok here
+    final cam = _cam;
+    _cam = null;
+    _streaming = false;
+    if (cam != null) {
+      () async {
+        try {
+          if (cam.value.isStreamingImages) await cam.stopImageStream();
+        } catch (_) {}
+        await cam.dispose();
+      }();
+    }
     _mqtt.disconnect();
     super.dispose();
   }

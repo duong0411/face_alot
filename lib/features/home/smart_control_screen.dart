@@ -237,9 +237,9 @@ class _VitalsStrip extends StatelessWidget {
           ),
           _Metric(
             icon: Icons.air_rounded,
-            label: 'Gas/1024',
-            value: v.gasSensorSuspect
-                ? 'Lỗi?'
+            label: 'Gas/1023',
+            value: v.gasDigital
+                ? 'DO?'
                 : (v.gasAlert ? '${v.gas}!' : '${v.gas}'),
             warn: v.gasAlert || v.gasSensorSuspect,
           ),
@@ -670,10 +670,10 @@ class _AutoRules extends StatelessWidget {
                 onChanged: onDarkLight,
               ),
               Text(
-                liveGas >= 1000
-                    ? 'Ngưỡng gas: ${gasThr.toStringAsFixed(0)} / 1024'
-                        ' (đang đo: $liveGas — kiểm tra dây MQ/A0)'
-                    : 'Ngưỡng gas: ${gasThr.toStringAsFixed(0)} / 1024'
+                (liveGas <= 5 || liveGas >= 1000)
+                    ? 'Ngưỡng: ${gasThr.toStringAsFixed(0)}/1023'
+                        ' (đo $liveGas — nối MQ chân AO→A0, không dùng DO)'
+                    : 'Ngưỡng gas: ${gasThr.toStringAsFixed(0)} / 1023'
                         '  (đang đo: $liveGas)',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),

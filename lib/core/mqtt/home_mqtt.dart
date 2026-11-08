@@ -11,8 +11,9 @@ import '../config.dart';
 class HomeVitals {
   double temp = 0;
   double humi = 0;
-  int gas = 0; // thang 0..1024 từ ESP
+  int gas = 0; // ADC raw 0..1023 từ ESP
   bool gasAlert = false;
+  bool gasDigital = false; // ESP báo tín hiệu giống DO (chỉ 0/1023)
   bool dark = false;
   bool lightOn = false;
   bool fanOn = false;
@@ -21,17 +22,17 @@ class HomeVitals {
   double tempFanOn = 30;
   double tempFanOff = 28;
   bool darkLightOn = true;
-  int gasThreshold = 512; // 0..1024
+  int gasThreshold = 512; // 0..1023
   bool gasOpenDoor = true;
   bool gasFanOn = true;
   int doorHoldSec = 5; // mở cửa bao lâu rồi đóng
   bool buzzerOnGas = true;
-  static const int gasScaleMax = 1024;
+  static const int gasScaleMax = 1023;
 
   bool get doorOpen => door > 10;
 
-  /// A0 nổi / hở mạch thường kẹt ~1023–1024
-  bool get gasSensorSuspect => gas >= 1000;
+  /// Kẹt biên hoặc ESP báo gasDigital → thường nối nhầm DO thay AO
+  bool get gasSensorSuspect => gasDigital || gas <= 5 || gas >= 1000;
 }
 
 class HomeMqtt extends ChangeNotifier {
@@ -89,6 +90,7 @@ class HomeMqtt extends ChangeNotifier {
         vitals.humi = (j['humi'] as num?)?.toDouble() ?? vitals.humi;
         vitals.gas = (j['gas'] as num?)?.toInt() ?? vitals.gas;
         vitals.gasAlert = (j['gasAlert'] ?? 0) == 1;
+        vitals.gasDigital = (j['gasDigital'] ?? 0) == 1;
         vitals.dark = (j['dark'] ?? 0) == 1;
         // Swap: ESP "light"=relay1 nhưng dây thực = quạt; "fan"=relay2 = đèn
         vitals.fanOn = '${j['light']}' == 'ON';

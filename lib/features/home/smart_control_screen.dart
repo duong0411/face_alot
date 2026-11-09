@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../core/alerts/gas_alert.dart';
+import '../../core/config.dart';
 import '../../core/mqtt/home_mqtt.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/home_atmosphere.dart';
@@ -12,8 +14,11 @@ class SmartControlScreen extends StatefulWidget {
 
 class _SmartControlScreenState extends State<SmartControlScreen> {
   final _mqtt = HomeMqtt();
+  late final TextEditingController _chipCtrl;
   String _status = 'Đang kết nối nhà...';
   bool _online = false;
+  bool _connecting = false;
+  bool _gasDialogShown = false;
 
   late double _tempOn;
   late double _tempOff;
@@ -27,6 +32,7 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
   @override
   void initState() {
     super.initState();
+    _chipCtrl = TextEditingController(text: AppConfig.chipId);
     _tempOn = 30;
     _tempOff = 28;
     _darkLight = true;
@@ -35,21 +41,68 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
     _gasFan = true;
     _doorHoldSec = 5;
     _buzzerOnGas = true;
+    GasAlert.instance.requestPermission();
     _boot();
   }
 
   Future<void> _boot() async {
+    setState(() {
+      _connecting = true;
+      _status = 'Đang kết nối nhà ${AppConfig.chipId}...';
+      _online = false;
+    });
     try {
       await _mqtt.connect();
       _mqtt.addListener(_syncFromMqtt);
+      if (!mounted) return;
       setState(() {
-        _status = 'Đã kết nối';
+        _status = 'Đã kết nối · ${AppConfig.chipId}';
         _online = true;
+        _connecting = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _status = 'Mất kết nối — kiểm tra mạng';
+        _status = 'Mất kết nối — kiểm tra mạng / Chip ID';
         _online = false;
+        _connecting = false;
+      });
+    }
+  }
+
+  Future<void> _connectHouse() async {
+    final id = _chipCtrl.text.trim();
+    if (id.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nhập Chip ID trước khi kết nối')),
+      );
+      return;
+    }
+    setState(() {
+      _connecting = true;
+      _status = 'Đang kết nối nhà $id...';
+      _online = false;
+    });
+    try {
+      await AppConfig.setChipId(id);
+      _mqtt.removeListener(_syncFromMqtt);
+      await _mqtt.reconnect();
+      _mqtt.addListener(_syncFromMqtt);
+      if (!mounted) return;
+      setState(() {
+        _status = 'Đã kết nối · ${AppConfig.chipId}';
+        _online = true;
+        _connecting = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đã nối nhà Chip ID ${AppConfig.chipId}')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _status = 'Kết nối thất bại — kiểm tra mạng / Chip ID';
+        _online = false;
+        _connecting = false;
       });
     }
   }
@@ -66,10 +119,41 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
       _doorHoldSec = v.doorHoldSec.toDouble();
       _buzzerOnGas = v.buzzerOnGas;
     });
+    _maybeShowGasDialog(v);
+  }
+
+  void _maybeShowGasDialog(HomeVitals v) {
+    if (!v.gasAlert) {
+      _gasDialogShown = false;
+      return;
+    }
+    if (_gasDialogShown || !mounted) return;
+    _gasDialogShown = true;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded,
+            color: AppColors.danger, size: 40),
+        title: const Text('Cảnh báo gas'),
+        content: Text(
+          'Phát hiện khí gas vượt ngưỡng (mức ${v.gas}/1023) tại nhà '
+          '${AppConfig.chipId}. Kiểm tra ngay nguồn gas / thông gió.',
+        ),
+        actions: [
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Đã hiểu'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   void dispose() {
+    _chipCtrl.dispose();
     _mqtt.removeListener(_syncFromMqtt);
     _mqtt.disconnect();
     super.dispose();
@@ -110,6 +194,16 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                       padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                       physics: const BouncingScrollPhysics(),
                       children: [
+                        _HouseChipConnect(
+                          controller: _chipCtrl,
+                          connecting: _connecting,
+                          onConnect: _connectHouse,
+                        ),
+                        const SizedBox(height: 16),
+                        if (v.gasAlert) ...[
+                          _GasAlertBanner(gas: v.gas),
+                          const SizedBox(height: 12),
+                        ],
                         _VitalsStrip(v: v),
                         const SizedBox(height: 20),
                         Text(
@@ -211,6 +305,108 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+class _GasAlertBanner extends StatelessWidget {
+  const _GasAlertBanner({required this.gas});
+  final int gas;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.danger.withValues(alpha: 0.55)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: AppColors.danger),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'CẢNH BÁO GAS — mức $gas/1023. Kiểm tra ngay!',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: AppColors.danger,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HouseChipConnect extends StatelessWidget {
+  const _HouseChipConnect({
+    required this.controller,
+    required this.connecting,
+    required this.onConnect,
+  });
+
+  final TextEditingController controller;
+  final bool connecting;
+  final VoidCallback onConnect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Kết nối nhà',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Nhập Chip ID trên ESP8266 để điều khiển đúng nhà.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AppColors.inkSoft,
+              ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                enabled: !connecting,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => onConnect(),
+                decoration: const InputDecoration(
+                  labelText: 'Chip ID',
+                  hintText: 'Ví dụ: 123',
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            FilledButton(
+              onPressed: connecting ? null : onConnect,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 56),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              child: connecting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Kết nối'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

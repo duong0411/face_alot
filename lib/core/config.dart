@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
 class AppConfig {
   /// Docker API (Cloudflare) — auth login / register / forgot password
   static const String apiBase = String.fromEnvironment(
@@ -7,11 +9,34 @@ class AppConfig {
 
   static const String mqttWss = 'wss://mqtt.duynguyen.io.vn/mqtt';
 
-  /// Chip ESP8266 SmartHome (khớp firmware)
-  static const String chipId = String.fromEnvironment(
+  static const String _prefsChipId = 'chip_id';
+
+  /// Chip ESP8266 SmartHome (khớp firmware) — mặc định compile-time, đổi runtime theo nhà
+  static const String defaultChipId = String.fromEnvironment(
     'CHIP_ID',
     defaultValue: '123',
   );
+
+  static String _chipId = defaultChipId;
+
+  static String get chipId => _chipId;
+
+  static Future<void> loadChipId() async {
+    final p = await SharedPreferences.getInstance();
+    final saved = p.getString(_prefsChipId)?.trim();
+    _chipId = (saved != null && saved.isNotEmpty) ? saved : defaultChipId;
+  }
+
+  /// Lưu Chip ID để kết nối đúng nhà (topic MQTT cmnd/{id}_… / tele/{id}_…)
+  static Future<void> setChipId(String id) async {
+    final cleaned = id.trim();
+    if (cleaned.isEmpty) {
+      throw ArgumentError('Chip ID không được để trống');
+    }
+    _chipId = cleaned;
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_prefsChipId, cleaned);
+  }
 
   static String get doorTopic => 'cmnd/${chipId}_door_livingroom1/POWER';
   static String get faceTopic => 'cmnd/${chipId}_face_livingroom/POWER';

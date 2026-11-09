@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 
+import '../alerts/gas_alert.dart';
 import '../config.dart';
 
 class HomeVitals {
@@ -70,6 +71,12 @@ class HomeMqtt extends ChangeNotifier {
     await _pub(AppConfig.cmndRulesGet, 'GET');
   }
 
+  /// Đổi nhà (chip) — ngắt kết nối cũ rồi subscribe topic mới
+  Future<void> reconnect() async {
+    disconnect();
+    await connect();
+  }
+
   void _onMsg(List<MqttReceivedMessage<MqttMessage>>? events) {
     if (events == null) return;
     for (final e in events) {
@@ -97,6 +104,13 @@ class HomeMqtt extends ChangeNotifier {
         vitals.lightOn = '${j['fan']}' == 'ON';
         vitals.door = (j['door'] as num?)?.toInt() ?? vitals.door;
         vitals.mode = '${j['mode'] ?? vitals.mode}';
+        // Cảnh báo trên điện thoại khi ESP báo gas
+        unawaited(
+          GasAlert.instance.handleVitals(
+            gasAlert: vitals.gasAlert,
+            gas: vitals.gas,
+          ),
+        );
       } else if (topic.contains('_mode')) {
         final j = jsonDecode(payload) as Map<String, dynamic>;
         vitals.mode = '${j['value'] ?? vitals.mode}';

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/config.dart';
 import '../../core/providers/auth_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/home_atmosphere.dart';
@@ -8,8 +9,55 @@ import '../face/face_register_screen.dart';
 import '../face/face_unlock_screen.dart';
 import 'smart_control_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late final TextEditingController _chipCtrl;
+  bool _savingChip = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _chipCtrl = TextEditingController(text: AppConfig.chipId);
+  }
+
+  @override
+  void dispose() {
+    _chipCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveChipId() async {
+    final id = _chipCtrl.text.trim();
+    if (id.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nhập Chip ID của nhà (ví dụ 123)')),
+      );
+      return;
+    }
+    setState(() => _savingChip = true);
+    try {
+      await AppConfig.setChipId(id);
+      _chipCtrl.text = AppConfig.chipId;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đã chọn nhà Chip ID ${AppConfig.chipId}')),
+      );
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không lưu được Chip ID: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _savingChip = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,10 +129,21 @@ class HomeScreen extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
                   child: Text(
-                    'Chọn việc cần làm trong nhà.',
+                    'Chọn nhà bằng Chip ID rồi điều khiển hoặc mở cửa.',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           color: AppColors.inkSoft,
                         ),
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+                  child: _ChipIdCard(
+                    controller: _chipCtrl,
+                    saving: _savingChip,
+                    activeId: AppConfig.chipId,
+                    onSave: _saveChipId,
                   ),
                 ),
               ),
@@ -138,6 +197,100 @@ class HomeScreen extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChipIdCard extends StatelessWidget {
+  const _ChipIdCard({
+    required this.controller,
+    required this.saving,
+    required this.activeId,
+    required this.onSave,
+  });
+
+  final TextEditingController controller;
+  final bool saving;
+  final String activeId;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.memory_rounded, color: AppColors.sage, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Chip ID nhà',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Text(
+                  'Đang dùng: $activeId',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.sageDeep,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Mỗi ESP8266 có một Chip ID — nhập đúng ID để nối riêng nhà đó.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.inkSoft,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => onSave(),
+                    decoration: const InputDecoration(
+                      hintText: 'Ví dụ: 123',
+                      labelText: 'Chip ID',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                FilledButton(
+                  onPressed: saving ? null : onSave,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 56),
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                  ),
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Lưu'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

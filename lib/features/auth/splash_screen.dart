@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/alerts/gas_alert.dart';
+import '../../core/config.dart';
 import '../../core/providers/auth_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/home_atmosphere.dart';
@@ -38,6 +40,8 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _boot() async {
     await Future.wait([
       context.read<AuthProvider>().checkAuthStatus(),
+      AppConfig.loadChipId(),
+      GasAlert.instance.init(),
       Future<void>.delayed(const Duration(milliseconds: 1100)),
     ]);
     if (!mounted) return;

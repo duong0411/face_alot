@@ -6,7 +6,8 @@ plugins {
 
 android {
     namespace = "vn.duynguyen.face_alot"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_local_notifications 22.x cần compileSdk >= 36
+    compileSdk = maxOf(flutter.compileSdkVersion, 36)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

@@ -9,6 +9,7 @@ App Flutter nhà thông minh: **đăng nhập API Docker**, **đăng ký khuôn 
 - Nhận diện **1:N**: probe so khớp toàn gallery (max cosine / người, top-K + ngưỡng + margin)
 - Đăng ký nhiều người / nhiều mẫu → realtime identify → MQTT mở cửa
 - Smart home **MANUAL / AUTO** (đèn, quạt, rule nhiệt/gas/LDR)
+- **Cảnh báo gas khi tắt app** (FCM **Android**; iOS chỉ khi app mở) — [docs/FCM_SETUP.md](docs/FCM_SETUP.md)
 - Broker: `wss://mqtt.duynguyen.io.vn/mqtt`
   - `cmnd/123_face_livingroom/POWER` JSON `{"name","action":"OPEN"}`
   - `cmnd/123_door_livingroom1/POWER` = `ON`
@@ -34,6 +35,20 @@ tools\ncnn_bin\onnx2ncnn.exe assets\models\MobileFaceNet_128.sim.onnx assets\mod
 ```bat
 flutter pub get
 flutter run
+```
+
+Sau khi cấu hình Firebase (xem `docs/FCM_SETUP.md`):
+
+```bat
+flutter run --dart-define=FIREBASE_CONFIGURED=true
+```
+
+Gas push bridge (MQTT → FCM):
+
+```bat
+cd server\gas_fcm_bridge
+npm install
+npm start
 ```
 
 Android build kèm NCNN (CMake FetchContent — lần đầu lâu):

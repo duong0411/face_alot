@@ -42,12 +42,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     setState(() => _savingChip = true);
     try {
-      await AppConfig.setChipId(id);
+      final ok = await context.read<AuthProvider>().saveChipId(id);
       _chipCtrl.text = AppConfig.chipId;
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đã chọn nhà Chip ID ${AppConfig.chipId}')),
-      );
+      if (ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Đã lưu Chip ID ${AppConfig.chipId} (MongoDB + máy này)',
+            ),
+          ),
+        );
+      } else {
+        final msg = context.read<AuthProvider>().errorMessage ?? 'Lỗi lưu Chip ID';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      }
       setState(() {});
     } catch (e) {
       if (!mounted) return;

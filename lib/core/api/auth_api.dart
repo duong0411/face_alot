@@ -12,10 +12,20 @@ class AuthApi {
 
   Uri _u(String path) => Uri.parse('${AppConfig.apiBase}$path');
 
+  Map<String, String> _authHeaders() => {
+        'Content-Type': 'application/json',
+        if (token != null && token!.isNotEmpty) 'Authorization': 'Bearer $token',
+      };
+
   Future<void> _save(String t, UserModel u) async {
     token = t;
     final p = await SharedPreferences.getInstance();
     await p.setString(_tokenKey, t);
+    await p.setString(_userKey, jsonEncode(u.toJson()));
+  }
+
+  Future<void> _saveUser(UserModel u) async {
+    final p = await SharedPreferences.getInstance();
     await p.setString(_userKey, jsonEncode(u.toJson()));
   }
 
@@ -56,6 +66,7 @@ class AuthApi {
     required String email,
     required String phone,
     required String password,
+    required String chipId,
   }) async {
     final res = await http.post(
       _u('/api/auth/register'),
@@ -65,6 +76,7 @@ class AuthApi {
         'email': email.trim(),
         'phone': phone.trim(),
         'password': password,
+        'chipId': chipId.trim(),
       }),
     );
     final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -74,6 +86,23 @@ class AuthApi {
     final data = body['data'] as Map<String, dynamic>;
     final user = UserModel.fromJson(data['user'] as Map<String, dynamic>);
     await _save('${data['token']}', user);
+    return user;
+  }
+
+  /// Lưu Chip ID lên MongoDB (user.chipId).
+  Future<UserModel> updateChipId(String chipId) async {
+    final res = await http.put(
+      _u('/api/auth/chip-id'),
+      headers: _authHeaders(),
+      body: jsonEncode({'chipId': chipId.trim()}),
+    );
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode != 200 || body['success'] != true) {
+      throw Exception(body['message'] ?? 'Không lưu được Chip ID');
+    }
+    final data = body['data'] as Map<String, dynamic>;
+    final user = UserModel.fromJson(data['user'] as Map<String, dynamic>);
+    await _saveUser(user);
     return user;
   }
 

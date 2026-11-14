@@ -17,6 +17,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _email = TextEditingController();
   final _phone = TextEditingController();
   final _pass = TextEditingController();
+  final _chip = TextEditingController();
 
   @override
   void dispose() {
@@ -24,15 +25,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _email.dispose();
     _phone.dispose();
     _pass.dispose();
+    _chip.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    if (_chip.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nhập Chip ID nhà (ví dụ 123)')),
+      );
+      return;
+    }
     final ok = await context.read<AuthProvider>().register(
           _name.text,
           _email.text,
           _phone.text,
           _pass.text,
+          chipId: _chip.text.trim(),
         );
     if (!mounted) return;
     if (ok) {
@@ -111,6 +120,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Mật khẩu',
                         prefixIcon: Icon(Icons.lock_outline_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _chip,
+                      textInputAction: TextInputAction.done,
+                      decoration: const InputDecoration(
+                        labelText: 'Chip ID nhà (ESP)',
+                        hintText: 'Ví dụ: 123',
+                        prefixIcon: Icon(Icons.memory_rounded),
                       ),
                     ),
                     const SizedBox(height: 20),

@@ -1,11 +1,16 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+
 import 'core/providers/auth_provider.dart';
+import 'core/push/fcm_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/splash_screen.dart';
+import 'firebase_options.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -13,6 +18,15 @@ void main() {
       statusBarIconBrightness: Brightness.dark,
     ),
   );
+
+  // FCM chỉ Android — đăng ký background handler trước runApp.
+  if (DefaultFirebaseOptions.isConfigured &&
+      !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.android) {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
+
+  await FcmService.instance.init();
   runApp(const FaceAlotApp());
 }
 

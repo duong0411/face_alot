@@ -1,9 +1,17 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'push/fcm_service.dart';
+
 class AppConfig {
   /// Docker API (Cloudflare) — auth login / register / forgot password
   static const String apiBase = String.fromEnvironment(
     'API_BASE',
+    defaultValue: 'https://duynguyen.io.vn',
+  );
+
+  /// Gas FCM bridge (MQTT → push). Mặc định cùng host API; đổi nếu bridge riêng.
+  static const String pushApiBase = String.fromEnvironment(
+    'PUSH_API_BASE',
     defaultValue: 'https://duynguyen.io.vn',
   );
 
@@ -36,6 +44,8 @@ class AppConfig {
     _chipId = cleaned;
     final p = await SharedPreferences.getInstance();
     await p.setString(_prefsChipId, cleaned);
+    // Gắn lại FCM token với nhà mới (để bridge đẩy đúng thiết bị)
+    await FcmService.instance.syncRegistration();
   }
 
   static String get doorTopic => 'cmnd/${chipId}_door_livingroom1/POWER';

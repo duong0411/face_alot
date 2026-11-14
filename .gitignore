@@ -57,3 +57,9 @@ assets/models/*.sim.onnx
 
 face_alot-release.apk
 *.apk
+
+# Firebase / FCM secrets (không commit)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+server/gas_fcm_bridge/serviceAccount.json
+server/gas_fcm_bridge/data/

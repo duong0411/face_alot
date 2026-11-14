@@ -79,13 +79,24 @@ class GasAlert {
       await HapticFeedback.heavyImpact();
     } catch (_) {}
 
+    final chip = AppConfig.chipId;
+    await showPush(
+      title: '⚠ Cảnh báo gas — nhà $chip',
+      body: 'Phát hiện khí gas vượt ngưỡng (mức $gas/1023). Kiểm tra ngay!',
+    );
+  }
+
+  /// Hiện thông báo từ FCM data-only / background isolate.
+  Future<void> showPush({
+    required String title,
+    required String body,
+  }) async {
     try {
       await init();
-      final chip = AppConfig.chipId;
       await _plugin.show(
         id: _notifId,
-        title: '⚠ Cảnh báo gas — nhà $chip',
-        body: 'Phát hiện khí gas vượt ngưỡng (mức $gas/1023). Kiểm tra ngay!',
+        title: title,
+        body: body,
         notificationDetails: NotificationDetails(
           android: AndroidNotificationDetails(
             _channelId,

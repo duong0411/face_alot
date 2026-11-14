@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/alerts/gas_alert.dart';
 import '../../core/config.dart';
 import '../../core/mqtt/home_mqtt.dart';
+import '../../core/providers/auth_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/home_atmosphere.dart';
 
@@ -83,8 +85,12 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
       _status = 'Đang kết nối nhà $id...';
       _online = false;
     });
+    final auth = context.read<AuthProvider>();
     try {
-      await AppConfig.setChipId(id);
+      final ok = await auth.saveChipId(id);
+      if (!ok) {
+        throw Exception(auth.errorMessage ?? 'Không lưu Chip ID');
+      }
       _mqtt.removeListener(_syncFromMqtt);
       await _mqtt.reconnect();
       _mqtt.addListener(_syncFromMqtt);

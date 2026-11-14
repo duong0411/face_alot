@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../core/alerts/gas_alert.dart';
 import '../../core/config.dart';
 import '../../core/providers/auth_provider.dart';
+import '../../core/push/fcm_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/home_atmosphere.dart';
 import '../home/home_screen.dart';
@@ -44,6 +45,8 @@ class _SplashScreenState extends State<SplashScreen>
       GasAlert.instance.init(),
       Future<void>.delayed(const Duration(milliseconds: 1100)),
     ]);
+    // ChipId đã load → đăng ký FCM token gắn đúng nhà
+    await FcmService.instance.syncRegistration();
     if (!mounted) return;
     final auth = context.read<AuthProvider>();
     Navigator.of(context).pushReplacement(

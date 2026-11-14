@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "125746205167",
+    "project_id": "face-e7576",
+    "storage_bucket": "face-e7576.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:125746205167:android:cbf38650e48de4d80a661a",
+        "android_client_info": {
+          "package_name": "vn.duynguyen.face_alot"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBn4DvAfRGHO8ngudteeLHNGgD3ECxjRkA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

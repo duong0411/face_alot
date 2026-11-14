@@ -22,26 +22,13 @@ jobs:
         with:
           channel: stable
           cache: true
-      - name: Write google-services.json (FCM Android)
-        env:
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+      - name: Ensure google-services.json present
         run: |
-          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
-            printf '%s\n' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
-            echo "FCM=1" >> "$GITHUB_ENV"
-            echo "google-services.json written"
-          else
-            echo "FCM=0" >> "$GITHUB_ENV"
-            echo "No GOOGLE_SERVICES_JSON secret — APK without FCM"
-          fi
+          test -f android/app/google-services.json
+          echo "google-services.json OK"
       - run: flutter pub get
       - name: Build APK
-        run: |
-          if [ "${FCM:-0}" = "1" ]; then
-            flutter build apk --release --dart-define=FIREBASE_CONFIGURED=true
-          else
-            flutter build apk --release
-          fi
+        run: flutter build apk --release --dart-define=FIREBASE_CONFIGURED=true
       - uses: actions/upload-artifact@v4
         with:
           name: face-alot-apk

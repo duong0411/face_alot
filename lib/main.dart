@@ -19,14 +19,18 @@ Future<void> main() async {
     ),
   );
 
-  // FCM chỉ Android — đăng ký background handler trước runApp.
-  if (DefaultFirebaseOptions.isConfigured &&
-      !kIsWeb &&
-      defaultTargetPlatform == TargetPlatform.android) {
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  // FCM chỉ Android. iOS: không init Firebase từ Dart (tránh treo/crash).
+  try {
+    if (DefaultFirebaseOptions.isConfigured &&
+        !kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.android) {
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+      await FcmService.instance.init();
+    }
+  } catch (e, st) {
+    debugPrint('FCM init skipped: $e\n$st');
   }
 
-  await FcmService.instance.init();
   runApp(const FaceAlotApp());
 }
 

@@ -58,9 +58,8 @@ assets/models/*.sim.onnx
 face_alot-release.apk
 *.apk
 
-# Firebase: google-services.json (client) được commit để CI build APK có FCM.
+# Firebase client configs được commit (APK/IPA CI).
 # Không commit service account / admin private key.
-ios/Runner/GoogleService-Info.plist
 server/gas_fcm_bridge/serviceAccount.json
 server/gas_fcm_bridge/data/
 **/firebase-adminsdk*.json

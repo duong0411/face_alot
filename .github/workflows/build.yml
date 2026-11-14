@@ -28,11 +28,30 @@ jobs:
           echo "google-services.json OK"
       - run: flutter pub get
       - name: Build APK
-        run: flutter build apk --release --dart-define=FIREBASE_CONFIGURED=true
+        run: |
+          set -o pipefail
+          flutter build apk --release --dart-define=FIREBASE_CONFIGURED=true 2>&1 | tee apk_build.log
+      - name: Show APK error log
+        if: failure()
+        run: |
+          {
+            echo '## Android APK build failed'
+            echo '```'
+            tail -n 120 apk_build.log || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          tail -n 120 apk_build.log || true
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: face-alot-apk
           path: build/app/outputs/flutter-apk/*.apk
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: face-alot-apk-build-log
+          path: apk_build.log
+          if-no-files-found: ignore
       - name: Prepare release APK
         if: startsWith(github.ref, 'refs/tags/')
         run: |

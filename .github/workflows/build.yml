@@ -20,27 +20,37 @@ jobs:
           java-version: 17
       - uses: subosito/flutter-action@v2
         with:
+          # Pin khớp máy local / tránh Flutter stable mới gãy Firebase+AGP9
+          flutter-version: "3.47.9"
           channel: stable
           cache: true
+      - name: Trim Gradle RAM for CI runners
+        run: |
+          sed -i 's/-Xmx8G/-Xmx3G/' android/gradle.properties
+          sed -i 's/MaxMetaspaceSize=4G/MaxMetaspaceSize=1G/' android/gradle.properties
+          cat android/gradle.properties
       - name: Ensure google-services.json present
         run: |
           test -f android/app/google-services.json
           echo "google-services.json OK"
+          python3 -m json.tool android/app/google-services.json > /dev/null
       - run: flutter pub get
       - name: Build APK
         run: |
           set -o pipefail
           flutter build apk --release --dart-define=FIREBASE_CONFIGURED=true 2>&1 | tee apk_build.log
-      - name: Show APK error log
+      - name: Annotate APK errors
         if: failure()
         run: |
-          {
-            echo '## Android APK build failed'
-            echo '```'
-            tail -n 120 apk_build.log || true
-            echo '```'
-          } | tee -a "$GITHUB_STEP_SUMMARY"
-          tail -n 120 apk_build.log || true
+          echo '## Android APK build failed' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 150 apk_build.log >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # ::error:: hiện trên Annotations (xem được không cần login)
+          grep -E "FAILURE:|What went wrong|BUILD FAILED|error:|Error:|Exception:|A problem|Could not|Execution failed" apk_build.log \
+            | tail -n 40 \
+            | while IFS= read -r line; do echo "::error::$line"; done || true
+          tail -n 80 apk_build.log || true
       - uses: actions/upload-artifact@v4
         if: success()
         with:

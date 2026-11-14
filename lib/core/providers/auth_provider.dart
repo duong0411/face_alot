@@ -49,7 +49,9 @@ class AuthProvider extends ChangeNotifier {
       await _applyUserChip(user!);
       status = AuthStatus.authenticated;
       notifyListeners();
-      await FcmService.instance.syncRegistration(authToken: _api.token);
+      if (FcmService.isSupportedPlatform) {
+        await FcmService.instance.syncRegistration(authToken: _api.token);
+      }
       return true;
     } catch (e) {
       errorMessage = e.toString().replaceFirst('Exception: ', '');
@@ -80,7 +82,9 @@ class AuthProvider extends ChangeNotifier {
       await _applyUserChip(user!);
       status = AuthStatus.authenticated;
       notifyListeners();
-      await FcmService.instance.syncRegistration(authToken: _api.token);
+      if (FcmService.isSupportedPlatform) {
+        await FcmService.instance.syncRegistration(authToken: _api.token);
+      }
       return true;
     } catch (e) {
       errorMessage = e.toString().replaceFirst('Exception: ', '');
@@ -99,7 +103,9 @@ class AuthProvider extends ChangeNotifier {
         user = await _api.updateChipId(chipId);
         notifyListeners();
       }
-      await FcmService.instance.syncRegistration(authToken: _api.token);
+      if (FcmService.isSupportedPlatform) {
+        await FcmService.instance.syncRegistration(authToken: _api.token);
+      }
       return true;
     } catch (e) {
       errorMessage = e.toString().replaceFirst('Exception: ', '');
@@ -131,7 +137,9 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    await FcmService.instance.unregister(authToken: _api.token);
+    if (FcmService.isSupportedPlatform) {
+      await FcmService.instance.unregister(authToken: _api.token);
+    }
     await _api.logout();
     user = null;
     status = AuthStatus.unauthenticated;

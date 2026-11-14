@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/alerts/gas_alert.dart';
@@ -21,6 +22,7 @@ class _SplashScreenState extends State<SplashScreen>
   late final AnimationController _anim;
   late final Animation<double> _fade;
   late final Animation<Offset> _slide;
+  bool _navigated = false;
 
   @override
   void initState() {
@@ -38,16 +40,49 @@ class _SplashScreenState extends State<SplashScreen>
     _boot();
   }
 
+  Future<T?> _guarded<T>(
+    String label,
+    Future<T> Function() run, {
+    Duration timeout = const Duration(seconds: 4),
+  }) async {
+    try {
+      return await run().timeout(timeout);
+    } catch (e) {
+      if (kDebugMode) debugPrint('Splash $label: $e');
+      return null;
+    }
+  }
+
   Future<void> _boot() async {
+    // Không để bất kỳ bước nào treo splash trên iOS.
     await Future.wait([
-      context.read<AuthProvider>().checkAuthStatus(),
-      AppConfig.loadChipId(),
-      GasAlert.instance.init(),
-      Future<void>.delayed(const Duration(milliseconds: 1100)),
+      _guarded('auth', () => context.read<AuthProvider>().checkAuthStatus()),
+      _guarded('chip', () => AppConfig.loadChipId()),
+      _guarded('notif', () => GasAlert.instance.init()),
+      Future<void>.delayed(const Duration(milliseconds: 900)),
     ]);
-    // ChipId đã load → đăng ký FCM token gắn đúng nhà
-    await FcmService.instance.syncRegistration();
-    if (!mounted) return;
+
+    // FCM chỉ Android — không chạm FirebaseMessaging trên iOS.
+    if (FcmService.isSupportedPlatform) {
+      await _guarded(
+        'fcm',
+        () => FcmService.instance.syncRegistration(),
+        timeout: const Duration(seconds: 3),
+      );
+    }
+
+    // Xin quyền thông báo sau khi đã vào UI (không block splash).
+    // ignore: unawaited_futures
+    Future<void>.delayed(const Duration(milliseconds: 600), () {
+      GasAlert.instance.requestPermission();
+    });
+
+    _goNext();
+  }
+
+  void _goNext() {
+    if (!mounted || _navigated) return;
+    _navigated = true;
     final auth = context.read<AuthProvider>();
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(

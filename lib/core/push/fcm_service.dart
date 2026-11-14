@@ -18,8 +18,6 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   } catch (_) {}
 
-  // Notification message (có title/body): OS tự hiện khi app killed / background.
-  // Data-only: hiện local notification dự phòng.
   if (message.notification != null) return;
 
   final data = message.data;
@@ -29,14 +27,14 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await GasAlert.instance.showPush(title: title, body: body);
 }
 
-/// FCM **Android-only** — báo gas khi app đã tắt.
-/// iOS: không có Apple Developer → bỏ qua; vẫn dùng MQTT + GasAlert khi app mở.
+/// FCM **Android-only**. Trên iOS tuyệt đối không đụng FirebaseMessaging
+/// (tránh treo splash / crash IPA unsigned).
 class FcmService {
   FcmService._();
   static final FcmService instance = FcmService._();
 
-  final _messaging = FirebaseMessaging.instance;
   final _api = PushApi();
+  FirebaseMessaging? _messaging;
   bool _ready = false;
   String? _fid;
   StreamSubscription<String>? _regSub;
@@ -48,26 +46,15 @@ class FcmService {
   static bool get isSupportedPlatform =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
-  /// Gọi từ [main] trước [runApp] (sau WidgetsFlutterBinding).
+  FirebaseMessaging get _msg {
+    _messaging ??= FirebaseMessaging.instance;
+    return _messaging!;
+  }
+
   Future<void> init() async {
     if (_ready) return;
-    if (!isSupportedPlatform) {
-      if (kDebugMode) {
-        debugPrint(
-          'FCM: chỉ bật trên Android (iOS cần Apple Developer + APNs).',
-        );
-      }
-      return;
-    }
-    if (!DefaultFirebaseOptions.isConfigured) {
-      if (kDebugMode) {
-        debugPrint(
-          'FCM: chưa cấu hình Firebase. Xem docs/FCM_SETUP.md '
-          '(google-services.json + --dart-define=FIREBASE_CONFIGURED=true)',
-        );
-      }
-      return;
-    }
+    if (!isSupportedPlatform) return;
+    if (!DefaultFirebaseOptions.isConfigured) return;
 
     try {
       await Firebase.initializeApp(
@@ -78,7 +65,7 @@ class FcmService {
       return;
     }
 
-    final settings = await _messaging.requestPermission(
+    final settings = await _msg.requestPermission(
       alert: true,
       badge: true,
       sound: true,
@@ -94,7 +81,7 @@ class FcmService {
       if (kDebugMode) debugPrint('FCM opened: ${m.messageId}');
     });
 
-    _regSub = _messaging.onRegistered.listen((fid) async {
+    _regSub = _msg.onRegistered.listen((fid) async {
       _fid = fid;
       if (kDebugMode) debugPrint('FCM FID: $fid');
       await syncRegistration();
@@ -103,7 +90,7 @@ class FcmService {
     });
 
     try {
-      await _messaging.register();
+      await _msg.register();
     } catch (e) {
       if (kDebugMode) debugPrint('FCM register: $e');
     }
@@ -122,9 +109,8 @@ class FcmService {
     }
   }
 
-  /// Gọi sau login / đổi chipId / khi FID đổi.
   Future<void> syncRegistration({String? authToken}) async {
-    if (!isSupportedPlatform) return;
+    if (!isSupportedPlatform || !_ready) return;
     final id = _fid;
     if (id == null || id.isEmpty) return;
     try {
@@ -148,7 +134,7 @@ class FcmService {
       await _api.unregisterDevice(fcmToken: id, authToken: authToken);
     }
     try {
-      await _messaging.unregister();
+      await _msg.unregister();
     } catch (_) {}
   }
 

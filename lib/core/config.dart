@@ -44,8 +44,10 @@ class AppConfig {
     _chipId = cleaned;
     final p = await SharedPreferences.getInstance();
     await p.setString(_prefsChipId, cleaned);
-    // Gắn lại FCM token với nhà mới (để bridge đẩy đúng thiết bị)
-    await FcmService.instance.syncRegistration();
+    // Android only — iOS không đụng FirebaseMessaging
+    if (FcmService.isSupportedPlatform) {
+      await FcmService.instance.syncRegistration();
+    }
   }
 
   static String get doorTopic => 'cmnd/${chipId}_door_livingroom1/POWER';

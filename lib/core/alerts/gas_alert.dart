@@ -19,13 +19,15 @@ class GasAlert {
   bool _episodeActive = false;
   DateTime _lastNotify = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// Init nhẹ — **không** xin quyền trên iOS (tránh treo splash / dialog).
   Future<void> init() async {
     if (_ready) return;
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    // iOS: tắt request* khi initialize — xin sau bằng requestPermission().
     const ios = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
     );
     await _plugin.initialize(
       settings: const InitializationSettings(android: android, iOS: ios),
@@ -46,15 +48,19 @@ class GasAlert {
   }
 
   Future<void> requestPermission() async {
-    await init();
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin>()
-        ?.requestPermissions(alert: true, badge: true, sound: true);
+    try {
+      await init();
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestNotificationsPermission();
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+    } catch (e) {
+      if (kDebugMode) debugPrint('GasAlert permission: $e');
+    }
   }
 
   /// Gọi mỗi lần nhận vitals. Chỉ báo một lần mỗi đợt gas (rising edge + cooldown).
@@ -86,7 +92,7 @@ class GasAlert {
     );
   }
 
-  /// Hiện thông báo từ FCM data-only / background isolate.
+  /// Hiện thông báo từ MQTT / FCM data-only.
   Future<void> showPush({
     required String title,
     required String body,

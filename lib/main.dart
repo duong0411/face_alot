@@ -1,5 +1,4 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -12,6 +11,7 @@ import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -19,16 +19,14 @@ Future<void> main() async {
     ),
   );
 
-  // FCM chỉ Android. iOS: không init Firebase từ Dart (tránh treo/crash).
-  try {
-    if (DefaultFirebaseOptions.isConfigured &&
-        !kIsWeb &&
-        defaultTargetPlatform == TargetPlatform.android) {
+  // FCM chỉ Android. iOS: tuyệt đối không gọi FirebaseMessaging.
+  if (FcmService.isSupportedPlatform && DefaultFirebaseOptions.isConfigured) {
+    try {
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-      await FcmService.instance.init();
+      await FcmService.instance.init().timeout(const Duration(seconds: 8));
+    } catch (e, st) {
+      debugPrint('FCM init skipped: $e\n$st');
     }
-  } catch (e, st) {
-    debugPrint('FCM init skipped: $e\n$st');
   }
 
   runApp(const FaceAlotApp());

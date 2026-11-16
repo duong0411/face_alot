@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
+import 'api_errors.dart';
 
 /// Face gallery 1:N trên MongoDB Docker — gọi qua API public HTTPS.
 class FaceApi {
@@ -15,12 +16,17 @@ class FaceApi {
     return p.getString(_tokenKey);
   }
 
+  Future<void> clearToken() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(_tokenKey);
+  }
+
   Uri _u(String path) => Uri.parse('${AppConfig.apiBase}$path');
 
   Future<Map<String, String>> _headers() async {
     final t = await _token();
     if (t == null || t.isEmpty) {
-      throw Exception('Chưa đăng nhập — cần JWT để dùng gallery MongoDB');
+      throw AuthExpiredException('Chưa đăng nhập — cần đăng nhập lại để dùng gallery MongoDB');
     }
     return {
       'Content-Type': 'application/json',
@@ -28,11 +34,22 @@ class FaceApi {
     };
   }
 
+  Never _throwApi(http.Response res, Map<String, dynamic> body, String fallback) {
+    final msg = '${body['message'] ?? fallback}';
+    if (res.statusCode == 401 ||
+        msg.contains('hết hạn') ||
+        msg.contains('đăng nhập') ||
+        msg.contains('token')) {
+      throw AuthExpiredException(msg);
+    }
+    throw Exception(msg);
+  }
+
   Future<List<Map<String, dynamic>>> list() async {
     final res = await http.get(_u('/api/faces'), headers: await _headers());
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     if (res.statusCode != 200 || body['success'] != true) {
-      throw Exception(body['message'] ?? 'List faces failed');
+      _throwApi(res, body, 'List faces failed');
     }
     return (body['data'] as List)
         .map((e) => Map<String, dynamic>.from(e as Map))
@@ -55,7 +72,7 @@ class FaceApi {
     );
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     if ((res.statusCode != 201 && res.statusCode != 200) || body['success'] != true) {
-      throw Exception(body['message'] ?? 'Register face failed');
+      _throwApi(res, body, 'Register face failed');
     }
     return Map<String, dynamic>.from(body['data'] as Map);
   }
@@ -74,7 +91,7 @@ class FaceApi {
     );
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     if (res.statusCode != 200 || body['success'] != true) {
-      throw Exception(body['message'] ?? 'Add sample failed');
+      _throwApi(res, body, 'Add sample failed');
     }
     return Map<String, dynamic>.from(body['data'] as Map);
   }
@@ -96,7 +113,7 @@ class FaceApi {
     );
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     if (res.statusCode != 200 || body['success'] != true) {
-      throw Exception(body['message'] ?? 'Identify failed');
+      _throwApi(res, body, 'Identify failed');
     }
     return Map<String, dynamic>.from(body['data'] as Map);
   }
@@ -108,7 +125,7 @@ class FaceApi {
     );
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     if (res.statusCode != 200 || body['success'] != true) {
-      throw Exception(body['message'] ?? 'Delete failed');
+      _throwApi(res, body, 'Delete failed');
     }
   }
 }

@@ -1,12 +1,16 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../core/api/api_errors.dart';
 import '../../core/api/face_api.dart';
 import '../../core/config.dart';
 import '../../core/mqtt/door_mqtt.dart';
+import '../../core/providers/auth_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../face_ncnn/camera_rgba.dart';
 import '../../face_ncnn/face_ncnn_ffi.dart';
+import '../auth/login_screen.dart';
 import 'face_register_screen.dart';
 
 class FaceUnlockScreen extends StatefulWidget {
@@ -29,6 +33,7 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
   int _gallerySize = 0;
   bool _emptyGallery = false;
   bool _camFailed = false;
+  bool _authExpired = false;
   DateTime _lastOpen = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastInfer = DateTime.fromMillisecondsSinceEpoch(0);
   bool _processing = false;
@@ -100,13 +105,41 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
         _status = 'Đang nhận diện...';
       });
       await _startStream();
+    } on AuthExpiredException catch (e) {
+      if (!mounted) return;
+      await _api.clearToken();
+      try {
+        await context.read<AuthProvider>().logout();
+      } catch (_) {}
+      setState(() {
+        _authExpired = true;
+        _camFailed = false;
+        _status = e.message;
+      });
     } catch (e) {
       if (!mounted) return;
+      final msg = '$e';
+      final expired = msg.contains('hết hạn') || msg.contains('đăng nhập');
       setState(() {
-        _camFailed = true;
-        _status = 'Không mở được nhận diện: $e';
+        _authExpired = expired;
+        _camFailed = !expired;
+        _status = expired
+            ? msg.replaceFirst(RegExp(r'^Exception:\s*'), '')
+            : 'Không mở được nhận diện: $e';
       });
     }
+  }
+
+  Future<void> _goLogin() async {
+    await _api.clearToken();
+    try {
+      await context.read<AuthProvider>().logout();
+    } catch (_) {}
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
   }
 
   Future<void> _startStream() async {
@@ -246,7 +279,7 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
   Widget build(BuildContext context) {
     final ready = _cam != null && _cam!.value.isInitialized;
 
-    if (_emptyGallery || _camFailed) {
+    if (_emptyGallery || _camFailed || _authExpired) {
       return Scaffold(
         backgroundColor: AppColors.ink,
         body: SafeArea(
@@ -275,17 +308,21 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
                 ),
                 const Spacer(),
                 Icon(
-                  _emptyGallery
-                      ? Icons.person_off_outlined
-                      : Icons.videocam_off_outlined,
+                  _authExpired
+                      ? Icons.lock_clock_outlined
+                      : _emptyGallery
+                          ? Icons.person_off_outlined
+                          : Icons.videocam_off_outlined,
                   size: 64,
                   color: Colors.white54,
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  _emptyGallery
-                      ? 'Chưa có thành viên'
-                      : 'Không mở được camera',
+                  _authExpired
+                      ? 'Phiên đăng nhập hết hạn'
+                      : _emptyGallery
+                          ? 'Chưa có thành viên'
+                          : 'Không mở được camera',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,
@@ -295,9 +332,11 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  _emptyGallery
-                      ? 'Thêm khuôn mặt trước, rồi quay lại để mở cửa.'
-                      : _status,
+                  _authExpired
+                      ? 'MongoDB gallery vẫn bình thường. Token JWT hết hạn (mặc định 7 ngày).\nHãy đăng nhập lại để tiếp tục nhận diện.'
+                      : _emptyGallery
+                          ? 'Thêm khuôn mặt trước, rồi quay lại để mở cửa.'
+                          : _status,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white70,
@@ -306,6 +345,17 @@ class _FaceUnlockScreenState extends State<FaceUnlockScreen> {
                   ),
                 ),
                 const SizedBox(height: 28),
+                if (_authExpired)
+                  FilledButton.icon(
+                    onPressed: _goLogin,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.sage,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    icon: const Icon(Icons.login_rounded),
+                    label: const Text('Đăng nhập lại'),
+                  ),
                 if (_emptyGallery)
                   FilledButton.icon(
                     onPressed: _goRegister,

@@ -22,27 +22,37 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
   bool _connecting = false;
   bool _gasDialogShown = false;
 
-  late double _tempOn;
-  late double _tempOff;
+  late double _soilDryOn;
+  late double _soilWetOff;
   late bool _darkLight;
-  late double _gasThr;
   late bool _gasDoor;
-  late bool _gasFan;
+  late bool _gasPump;
   late double _doorHoldSec;
   late bool _buzzerOnGas;
+  late bool _buzzerOnEmpty;
+  late double _waterEmptyCm;
+  late double _waterOkCm;
+  late bool _autoPumpEmpty;
+  late bool _autoPumpSoil;
+  late bool _stopPumpRain;
 
   @override
   void initState() {
     super.initState();
     _chipCtrl = TextEditingController(text: AppConfig.chipId);
-    _tempOn = 30;
-    _tempOff = 28;
+    _soilDryOn = 2800;
+    _soilWetOff = 2200;
     _darkLight = true;
-    _gasThr = 512;
     _gasDoor = true;
-    _gasFan = true;
+    _gasPump = false;
     _doorHoldSec = 5;
     _buzzerOnGas = true;
+    _buzzerOnEmpty = true;
+    _waterEmptyCm = 25;
+    _waterOkCm = 18;
+    _autoPumpEmpty = true;
+    _autoPumpSoil = true;
+    _stopPumpRain = true;
     GasAlert.instance.requestPermission();
     _boot();
   }
@@ -116,14 +126,19 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
   void _syncFromMqtt() {
     final v = _mqtt.vitals;
     setState(() {
-      _tempOn = v.tempFanOn;
-      _tempOff = v.tempFanOff;
+      _soilDryOn = v.soilDryOn;
+      _soilWetOff = v.soilWetOff;
       _darkLight = v.darkLightOn;
-      _gasThr = v.gasThreshold.toDouble();
       _gasDoor = v.gasOpenDoor;
-      _gasFan = v.gasFanOn;
+      _gasPump = v.gasPumpOn;
       _doorHoldSec = v.doorHoldSec.toDouble();
       _buzzerOnGas = v.buzzerOnGas;
+      _buzzerOnEmpty = v.buzzerOnEmpty;
+      _waterEmptyCm = v.waterEmptyCm;
+      _waterOkCm = v.waterOkCm;
+      _autoPumpEmpty = v.autoPumpEmpty;
+      _autoPumpSoil = v.autoPumpSoil;
+      _stopPumpRain = v.stopPumpRain;
     });
     _maybeShowGasDialog(v);
   }
@@ -141,10 +156,10 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
       builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.warning_amber_rounded,
             color: AppColors.danger, size: 40),
-        title: const Text('Cảnh báo gas'),
+        title: const Text('Cảnh báo gas / CO2'),
         content: Text(
-          'Phát hiện khí gas vượt ngưỡng (mức ${v.gas}/1023) tại nhà '
-          '${AppConfig.chipId}. Kiểm tra ngay nguồn gas / thông gió.',
+          'Phát hiện khí gas tại nhà ${AppConfig.chipId}. '
+          'Kiểm tra nguồn gas / thông gió. Còi ESP đang báo động.',
         ),
         actions: [
           FilledButton(
@@ -207,10 +222,21 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                         ),
                         const SizedBox(height: 16),
                         if (v.gasAlert) ...[
-                          _GasAlertBanner(gas: v.gas),
+                          const _AlertBanner(
+                            text: 'CẢNH BÁO GAS / CO2 — kiểm tra ngay!',
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        if (v.waterEmpty) ...[
+                          const _AlertBanner(
+                            text: 'HẾT NƯỚC — còi báo · AUTO sẽ bật bơm',
+                            color: AppColors.amber,
+                          ),
                           const SizedBox(height: 12),
                         ],
                         _VitalsStrip(v: v),
+                        const SizedBox(height: 12),
+                        _ExtraVitals(v: v),
                         const SizedBox(height: 20),
                         Text(
                           'Chế độ',
@@ -226,8 +252,8 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                               SnackBar(
                                 content: Text(
                                   auto
-                                      ? 'AUTO: ESP theo rule cảm biến (OLED trang RULES)'
-                                      : 'Thủ công: điều khiển đèn / quạt / cửa trên app',
+                                      ? 'AUTO: đèn / bơm theo cảm biến + rule'
+                                      : 'Thủ công: điều khiển đèn / bơm / cửa trên app',
                                 ),
                               ),
                             );
@@ -236,7 +262,7 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                         const SizedBox(height: 12),
                         Text(
                           isAuto
-                              ? 'Đang AUTO — đèn/quạt theo cảm biến + rule dưới đây'
+                              ? 'Đang AUTO — đèn/bơm theo cảm biến + rule dưới đây'
                               : 'Đang Thủ công — bật/tắt thiết bị bên dưới',
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                 color: AppColors.inkSoft,
@@ -247,56 +273,79 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                           _ManualDevices(
                             key: const ValueKey('manual'),
                             lightOn: v.lightOn,
-                            fanOn: v.fanOn,
+                            pumpOn: v.pumpOn,
                             doorDeg: v.door,
                             onLight: _mqtt.setLight,
-                            onFan: _mqtt.setFan,
+                            onPump: _mqtt.setPump,
                             onOpenDoor: _mqtt.openDoor,
                             onCloseDoor: _mqtt.closeDoor,
                           ),
                           const SizedBox(height: 22),
                         ],
-                        // Rule luôn chỉnh được (OLED đồng bộ khi Lưu); chỉ có hiệu lực khi AUTO
                         _AutoRules(
                           key: const ValueKey('rules'),
-                          tempOn: _tempOn,
-                          tempOff: _tempOff,
+                          soilDryOn: _soilDryOn,
+                          soilWetOff: _soilWetOff,
                           darkLight: _darkLight,
-                          gasThr: _gasThr,
                           gasDoor: _gasDoor,
-                          gasFan: _gasFan,
+                          gasPump: _gasPump,
                           doorHoldSec: _doorHoldSec,
                           buzzerOnGas: _buzzerOnGas,
-                          liveGas: v.gas,
-                          onTempOn: (x) => setState(() {
-                            _tempOn = x;
-                            if (_tempOff >= _tempOn) {
-                              _tempOff = _tempOn - 1;
+                          buzzerOnEmpty: _buzzerOnEmpty,
+                          waterEmptyCm: _waterEmptyCm,
+                          waterOkCm: _waterOkCm,
+                          autoPumpEmpty: _autoPumpEmpty,
+                          autoPumpSoil: _autoPumpSoil,
+                          stopPumpRain: _stopPumpRain,
+                          liveSoil: v.soil,
+                          liveWater: v.waterCm,
+                          onSoilDry: (x) => setState(() {
+                            _soilDryOn = x;
+                            if (_soilWetOff >= _soilDryOn) {
+                              _soilWetOff = _soilDryOn - 100;
                             }
                           }),
-                          onTempOff: (x) => setState(() => _tempOff = x),
+                          onSoilWet: (x) => setState(() => _soilWetOff = x),
                           onDarkLight: (x) => setState(() => _darkLight = x),
-                          onGasThr: (x) => setState(() => _gasThr = x),
                           onGasDoor: (x) => setState(() => _gasDoor = x),
-                          onGasFan: (x) => setState(() => _gasFan = x),
+                          onGasPump: (x) => setState(() => _gasPump = x),
                           onDoorHold: (x) => setState(() => _doorHoldSec = x),
-                          onBuzzer: (x) => setState(() => _buzzerOnGas = x),
+                          onBuzzerGas: (x) => setState(() => _buzzerOnGas = x),
+                          onBuzzerEmpty: (x) =>
+                              setState(() => _buzzerOnEmpty = x),
+                          onWaterEmpty: (x) => setState(() {
+                            _waterEmptyCm = x;
+                            if (_waterOkCm >= _waterEmptyCm) {
+                              _waterOkCm = _waterEmptyCm - 2;
+                            }
+                          }),
+                          onWaterOk: (x) => setState(() => _waterOkCm = x),
+                          onAutoPumpEmpty: (x) =>
+                              setState(() => _autoPumpEmpty = x),
+                          onAutoPumpSoil: (x) =>
+                              setState(() => _autoPumpSoil = x),
+                          onStopRain: (x) => setState(() => _stopPumpRain = x),
                           onSave: () async {
                             await _mqtt.saveRules(
-                              tempFanOn: _tempOn,
-                              tempFanOff: _tempOff,
+                              soilDryOn: _soilDryOn,
+                              soilWetOff: _soilWetOff,
                               darkLightOn: _darkLight,
-                              gasThreshold: _gasThr.round(),
                               gasOpenDoor: _gasDoor,
-                              gasFanOn: _gasFan,
+                              gasPumpOn: _gasPump,
                               doorHoldSec: _doorHoldSec.round(),
                               buzzerOnGas: _buzzerOnGas,
+                              buzzerOnEmpty: _buzzerOnEmpty,
+                              waterEmptyCm: _waterEmptyCm,
+                              waterOkCm: _waterOkCm,
+                              autoPumpEmpty: _autoPumpEmpty,
+                              autoPumpSoil: _autoPumpSoil,
+                              stopPumpRain: _stopPumpRain,
                             );
                             if (!mounted) return;
                             ScaffoldMessenger.of(this.context).showSnackBar(
                               const SnackBar(
                                 content: Text(
-                                  'Đã gửi rule xuống ESP — xem OLED trang RULES',
+                                  'Đã gửi rule xuống ESP32 — xem OLED trang RULES',
                                 ),
                               ),
                             );
@@ -315,29 +364,30 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
   }
 }
 
-class _GasAlertBanner extends StatelessWidget {
-  const _GasAlertBanner({required this.gas});
-  final int gas;
+class _AlertBanner extends StatelessWidget {
+  const _AlertBanner({required this.text, this.color = AppColors.danger});
+  final String text;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.danger.withValues(alpha: 0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.danger.withValues(alpha: 0.55)),
+        border: Border.all(color: color.withValues(alpha: 0.55)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         child: Row(
           children: [
-            const Icon(Icons.warning_amber_rounded, color: AppColors.danger),
+            Icon(Icons.warning_amber_rounded, color: color),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'CẢNH BÁO GAS — mức $gas/1023. Kiểm tra ngay!',
+                text,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: AppColors.danger,
+                      color: color,
                       fontWeight: FontWeight.w700,
                     ),
               ),
@@ -371,7 +421,7 @@ class _HouseChipConnect extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Nhập Chip ID trên ESP8266 để điều khiển đúng nhà.',
+          'Nhập Chip ID trên ESP32 để điều khiển đúng nhà.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppColors.inkSoft,
               ),
@@ -434,21 +484,57 @@ class _VitalsStrip extends StatelessWidget {
           ),
           _Metric(
             icon: Icons.water_drop_outlined,
-            label: 'Độ ẩm',
+            label: 'Độ ẩm KK',
             value: '${v.humi.toStringAsFixed(0)}%',
           ),
           _Metric(
             icon: Icons.air_rounded,
-            label: 'Gas/1023',
-            value: v.gasDigital
-                ? 'DO?'
-                : (v.gasAlert ? '${v.gas}!' : '${v.gas}'),
-            warn: v.gasAlert || v.gasSensorSuspect,
+            label: 'Gas',
+            value: v.gasAlert ? 'ALERT' : 'OK',
+            warn: v.gasAlert,
           ),
           _Metric(
             icon: Icons.wb_twilight_rounded,
             label: 'Ánh sáng',
             value: v.dark ? 'Tối' : 'Sáng',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExtraVitals extends StatelessWidget {
+  const _ExtraVitals({required this.v});
+  final HomeVitals v;
+
+  @override
+  Widget build(BuildContext context) {
+    return SoftPanel(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+      child: Row(
+        children: [
+          _Metric(
+            icon: Icons.grass_rounded,
+            label: 'Đất',
+            value: v.soilDry ? 'Khô' : '${v.soil}',
+            warn: v.soilDry,
+          ),
+          _Metric(
+            icon: Icons.water_rounded,
+            label: 'Mực nước',
+            value: '${v.waterCm.toStringAsFixed(0)}cm',
+            warn: v.waterEmpty,
+          ),
+          _Metric(
+            icon: Icons.umbrella_rounded,
+            label: 'Mưa',
+            value: v.raining ? 'Có' : 'Không',
+          ),
+          _Metric(
+            icon: Icons.water_damage_outlined,
+            label: 'Bơm',
+            value: v.pumpOn ? 'ON' : 'OFF',
           ),
         ],
       ),
@@ -588,19 +674,19 @@ class _ManualDevices extends StatelessWidget {
   const _ManualDevices({
     super.key,
     required this.lightOn,
-    required this.fanOn,
+    required this.pumpOn,
     required this.doorDeg,
     required this.onLight,
-    required this.onFan,
+    required this.onPump,
     required this.onOpenDoor,
     required this.onCloseDoor,
   });
 
   final bool lightOn;
-  final bool fanOn;
+  final bool pumpOn;
   final int doorDeg;
   final ValueChanged<bool> onLight;
-  final ValueChanged<bool> onFan;
+  final ValueChanged<bool> onPump;
   final VoidCallback onOpenDoor;
   final VoidCallback onCloseDoor;
 
@@ -631,12 +717,12 @@ class _ManualDevices extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: _DeviceTile(
-                title: 'Quạt',
-                subtitle: fanOn ? 'Đang bật' : 'Đang tắt',
-                icon: Icons.air_rounded,
-                active: fanOn,
+                title: 'Bơm nước',
+                subtitle: pumpOn ? 'Đang bật' : 'Đang tắt',
+                icon: Icons.water_damage_rounded,
+                active: pumpOn,
                 accent: AppColors.sage,
-                onTap: () => onFan(!fanOn),
+                onTap: () => onPump(!pumpOn),
               ),
             ),
           ],
@@ -677,15 +763,6 @@ class _ManualDevices extends StatelessWidget {
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                doorDeg > 10
-                    ? 'Trạng thái: cửa đang mở'
-                    : 'Trạng thái: cửa đang đóng',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.inkSoft,
-                    ),
               ),
               const SizedBox(height: 14),
               Row(
@@ -780,43 +857,65 @@ class _DeviceTile extends StatelessWidget {
 class _AutoRules extends StatelessWidget {
   const _AutoRules({
     super.key,
-    required this.tempOn,
-    required this.tempOff,
+    required this.soilDryOn,
+    required this.soilWetOff,
     required this.darkLight,
-    required this.gasThr,
     required this.gasDoor,
-    required this.gasFan,
+    required this.gasPump,
     required this.doorHoldSec,
     required this.buzzerOnGas,
-    required this.liveGas,
-    required this.onTempOn,
-    required this.onTempOff,
+    required this.buzzerOnEmpty,
+    required this.waterEmptyCm,
+    required this.waterOkCm,
+    required this.autoPumpEmpty,
+    required this.autoPumpSoil,
+    required this.stopPumpRain,
+    required this.liveSoil,
+    required this.liveWater,
+    required this.onSoilDry,
+    required this.onSoilWet,
     required this.onDarkLight,
-    required this.onGasThr,
     required this.onGasDoor,
-    required this.onGasFan,
+    required this.onGasPump,
     required this.onDoorHold,
-    required this.onBuzzer,
+    required this.onBuzzerGas,
+    required this.onBuzzerEmpty,
+    required this.onWaterEmpty,
+    required this.onWaterOk,
+    required this.onAutoPumpEmpty,
+    required this.onAutoPumpSoil,
+    required this.onStopRain,
     required this.onSave,
   });
 
-  final double tempOn;
-  final double tempOff;
+  final double soilDryOn;
+  final double soilWetOff;
   final bool darkLight;
-  final double gasThr;
   final bool gasDoor;
-  final bool gasFan;
+  final bool gasPump;
   final double doorHoldSec;
   final bool buzzerOnGas;
-  final int liveGas;
-  final ValueChanged<double> onTempOn;
-  final ValueChanged<double> onTempOff;
+  final bool buzzerOnEmpty;
+  final double waterEmptyCm;
+  final double waterOkCm;
+  final bool autoPumpEmpty;
+  final bool autoPumpSoil;
+  final bool stopPumpRain;
+  final int liveSoil;
+  final double liveWater;
+  final ValueChanged<double> onSoilDry;
+  final ValueChanged<double> onSoilWet;
   final ValueChanged<bool> onDarkLight;
-  final ValueChanged<double> onGasThr;
   final ValueChanged<bool> onGasDoor;
-  final ValueChanged<bool> onGasFan;
+  final ValueChanged<bool> onGasPump;
   final ValueChanged<double> onDoorHold;
-  final ValueChanged<bool> onBuzzer;
+  final ValueChanged<bool> onBuzzerGas;
+  final ValueChanged<bool> onBuzzerEmpty;
+  final ValueChanged<double> onWaterEmpty;
+  final ValueChanged<double> onWaterOk;
+  final ValueChanged<bool> onAutoPumpEmpty;
+  final ValueChanged<bool> onAutoPumpSoil;
+  final ValueChanged<bool> onStopRain;
   final VoidCallback onSave;
 
   @override
@@ -830,7 +929,7 @@ class _AutoRules extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Lưu → ESP + OLED cập nhật ngay. Chỉ điều khiển thiết bị khi đang Thủ công.',
+          'Lưu → ESP32 + OLED cập nhật. Khoảng cách lớn = mực nước thấp.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppColors.inkSoft,
               ),
@@ -841,28 +940,74 @@ class _AutoRules extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Bật quạt khi ≥ ${tempOn.toStringAsFixed(0)}°C',
+                'Đất khô khi ADC ≥ ${soilDryOn.toStringAsFixed(0)} (đo: $liveSoil)',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
               Slider(
-                min: 20,
-                max: 40,
-                divisions: 20,
-                value: tempOn.clamp(20, 40),
+                min: 500,
+                max: 4095,
+                divisions: 70,
+                value: soilDryOn.clamp(500, 4095),
                 activeColor: AppColors.sage,
-                onChanged: onTempOn,
+                onChanged: onSoilDry,
               ),
               Text(
-                'Tắt quạt khi ≤ ${tempOff.toStringAsFixed(0)}°C',
+                'Đất đủ ẩm khi ADC ≤ ${soilWetOff.toStringAsFixed(0)}',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
               Slider(
-                min: 18,
-                max: 38,
-                divisions: 20,
-                value: tempOff.clamp(18, 38),
+                min: 400,
+                max: 4000,
+                divisions: 70,
+                value: soilWetOff.clamp(400, 4000),
                 activeColor: AppColors.sage,
-                onChanged: onTempOff,
+                onChanged: onSoilWet,
+              ),
+              Text(
+                'Hết nước khi khoảng cách ≥ ${waterEmptyCm.toStringAsFixed(0)} cm'
+                ' (đo: ${liveWater.toStringAsFixed(1)} cm)',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              Slider(
+                min: 5,
+                max: 80,
+                divisions: 75,
+                value: waterEmptyCm.clamp(5, 80),
+                activeColor: AppColors.amber,
+                onChanged: onWaterEmpty,
+              ),
+              Text(
+                'Đủ nước khi khoảng cách ≤ ${waterOkCm.toStringAsFixed(0)} cm',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              Slider(
+                min: 3,
+                max: 70,
+                divisions: 67,
+                value: waterOkCm.clamp(3, 70),
+                activeColor: AppColors.amber,
+                onChanged: onWaterOk,
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Hết nước → tự bơm'),
+                value: autoPumpEmpty,
+                activeThumbColor: AppColors.sage,
+                onChanged: onAutoPumpEmpty,
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Đất khô → tự bơm'),
+                value: autoPumpSoil,
+                activeThumbColor: AppColors.sage,
+                onChanged: onAutoPumpSoil,
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Có mưa → dừng bơm'),
+                value: stopPumpRain,
+                activeThumbColor: AppColors.sage,
+                onChanged: onStopRain,
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -871,35 +1016,13 @@ class _AutoRules extends StatelessWidget {
                 activeThumbColor: AppColors.sage,
                 onChanged: onDarkLight,
               ),
-              Text(
-                (liveGas <= 5 || liveGas >= 1000)
-                    ? 'Ngưỡng: ${gasThr.toStringAsFixed(0)}/1023'
-                        ' (đo $liveGas — nối MQ chân AO→A0, không dùng DO)'
-                    : 'Ngưỡng gas: ${gasThr.toStringAsFixed(0)} / 1023'
-                        '  (đang đo: $liveGas)',
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              Slider(
-                min: 0,
-                max: HomeVitals.gasScaleMax.toDouble(),
-                divisions: 64,
-                value: gasThr.clamp(0, HomeVitals.gasScaleMax.toDouble()),
-                activeColor: AppColors.amber,
-                onChanged: onGasThr,
-              ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Gas vượt ngưỡng → mở cửa'),
-                subtitle: Text(
-                  'Mở ${_doorHoldLabel(doorHoldSec)} rồi tự đóng',
-                ),
+                title: const Text('Gas → mở cửa'),
+                subtitle: Text('Giữ mở ${doorHoldSec.toStringAsFixed(0)} giây'),
                 value: gasDoor,
                 activeThumbColor: AppColors.sage,
                 onChanged: onGasDoor,
-              ),
-              Text(
-                'Giữ cửa mở: ${doorHoldSec.toStringAsFixed(0)} giây',
-                style: Theme.of(context).textTheme.bodyLarge,
               ),
               Slider(
                 min: 1,
@@ -911,17 +1034,24 @@ class _AutoRules extends StatelessWidget {
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Gas → bật quạt'),
-                value: gasFan,
+                title: const Text('Gas → bật bơm'),
+                value: gasPump,
                 activeThumbColor: AppColors.sage,
-                onChanged: onGasFan,
+                onChanged: onGasPump,
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Còi báo động khi có gas'),
+                title: const Text('Còi khi có gas'),
                 value: buzzerOnGas,
                 activeThumbColor: AppColors.amber,
-                onChanged: onBuzzer,
+                onChanged: onBuzzerGas,
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Còi khi hết nước'),
+                value: buzzerOnEmpty,
+                activeThumbColor: AppColors.amber,
+                onChanged: onBuzzerEmpty,
               ),
               const SizedBox(height: 8),
               SizedBox(
@@ -940,6 +1070,4 @@ class _AutoRules extends StatelessWidget {
       ],
     );
   }
-
-  static String _doorHoldLabel(double sec) => '${sec.round()} giây';
 }

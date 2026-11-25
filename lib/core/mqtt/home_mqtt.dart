@@ -12,28 +12,45 @@ import '../config.dart';
 class HomeVitals {
   double temp = 0;
   double humi = 0;
-  int gas = 0; // ADC raw 0..1023 từ ESP
+  int gas = 0; // ESP32: gas D0 → 0/1; vẫn giữ field cho UI
   bool gasAlert = false;
-  bool gasDigital = false; // ESP báo tín hiệu giống DO (chỉ 0/1023)
+  bool gasDigital = true; // ESP32 đọc D0
   bool dark = false;
   bool lightOn = false;
-  bool fanOn = false;
+  bool pumpOn = false;
   int door = 0;
   String mode = 'MANUAL';
-  double tempFanOn = 30;
-  double tempFanOff = 28;
+
+  // Rule ESP32
+  double soilDryOn = 2800;
+  double soilWetOff = 2200;
   bool darkLightOn = true;
-  int gasThreshold = 512; // 0..1023
+  int gasThreshold = 1;
   bool gasOpenDoor = true;
-  bool gasFanOn = true;
-  int doorHoldSec = 5; // mở cửa bao lâu rồi đóng
+  bool gasPumpOn = false;
+  int doorHoldSec = 5;
   bool buzzerOnGas = true;
-  static const int gasScaleMax = 1023;
+  bool buzzerOnEmpty = true;
+  double waterEmptyCm = 25;
+  double waterOkCm = 18;
+  bool autoPumpEmpty = true;
+  bool autoPumpSoil = true;
+  bool stopPumpRain = true;
+
+  // Sensor live
+  int soil = 0;
+  bool soilDry = false;
+  bool raining = false;
+  double waterCm = 0;
+  bool waterEmpty = false;
+
+  static const int soilScaleMax = 4095;
 
   bool get doorOpen => door > 10;
 
-  /// Kẹt biên hoặc ESP báo gasDigital → thường nối nhầm DO thay AO
-  bool get gasSensorSuspect => gasDigital || gas <= 5 || gas >= 1000;
+  /// Alias tương thích UI cũ
+  bool get fanOn => pumpOn;
+  set fanOn(bool v) => pumpOn = v;
 }
 
 class HomeMqtt extends ChangeNotifier {
@@ -63,15 +80,16 @@ class HomeMqtt extends ChangeNotifier {
     client.subscribe(AppConfig.teleVitals, MqttQos.atMostOnce);
     client.subscribe(AppConfig.teleMode, MqttQos.atMostOnce);
     client.subscribe(AppConfig.teleRules, MqttQos.atMostOnce);
-    // Đèn/quạt wiring thực tế ngược topic led1 ↔ fan — swap khi đọc tele
+    // ESP32: led1 = đèn, fan topic = bơm (không swap wiring)
     client.subscribe(AppConfig.teleRelay1, MqttQos.atMostOnce);
     client.subscribe(AppConfig.teleRelay2, MqttQos.atMostOnce);
     client.subscribe(AppConfig.teleDoor, MqttQos.atMostOnce);
-    // Xin ESP đẩy lại rules hiện tại lên OLED/app
+    client.subscribe(AppConfig.teleWater, MqttQos.atMostOnce);
+    client.subscribe(AppConfig.teleSoil, MqttQos.atMostOnce);
+    client.subscribe(AppConfig.teleRain, MqttQos.atMostOnce);
     await _pub(AppConfig.cmndRulesGet, 'GET');
   }
 
-  /// Đổi nhà (chip) — ngắt kết nối cũ rồi subscribe topic mới
   Future<void> reconnect() async {
     disconnect();
     await connect();
@@ -97,18 +115,22 @@ class HomeMqtt extends ChangeNotifier {
         vitals.humi = (j['humi'] as num?)?.toDouble() ?? vitals.humi;
         vitals.gas = (j['gas'] as num?)?.toInt() ?? vitals.gas;
         vitals.gasAlert = (j['gasAlert'] ?? 0) == 1;
-        vitals.gasDigital = (j['gasDigital'] ?? 0) == 1;
+        vitals.gasDigital = (j['gasDigital'] ?? 1) == 1;
         vitals.dark = (j['dark'] ?? 0) == 1;
-        // Swap: ESP "light"=relay1 nhưng dây thực = quạt; "fan"=relay2 = đèn
-        vitals.fanOn = '${j['light']}' == 'ON';
-        vitals.lightOn = '${j['fan']}' == 'ON';
+        vitals.lightOn = '${j['light']}' == 'ON';
+        final pump = j['pump'] ?? j['fan'];
+        vitals.pumpOn = '$pump' == 'ON';
         vitals.door = (j['door'] as num?)?.toInt() ?? vitals.door;
         vitals.mode = '${j['mode'] ?? vitals.mode}';
-        // Cảnh báo trên điện thoại khi ESP báo gas
+        vitals.soil = (j['soil'] as num?)?.toInt() ?? vitals.soil;
+        vitals.soilDry = (j['soilDry'] ?? 0) == 1;
+        vitals.raining = (j['rain'] ?? 0) == 1;
+        vitals.waterCm = (j['waterCm'] as num?)?.toDouble() ?? vitals.waterCm;
+        vitals.waterEmpty = (j['waterEmpty'] ?? 0) == 1;
         unawaited(
           GasAlert.instance.handleVitals(
             gasAlert: vitals.gasAlert,
-            gas: vitals.gas,
+            gas: vitals.gasAlert ? 1 : 0,
           ),
         );
       } else if (topic.contains('_mode')) {
@@ -116,28 +138,60 @@ class HomeMqtt extends ChangeNotifier {
         vitals.mode = '${j['value'] ?? vitals.mode}';
       } else if (topic.contains('_rules')) {
         final j = jsonDecode(payload) as Map<String, dynamic>;
-        if (j.containsKey('ack') && !j.containsKey('tempFanOn')) return;
+        if (j.containsKey('ack') &&
+            !j.containsKey('soilDryOn') &&
+            !j.containsKey('waterEmptyCm') &&
+            !j.containsKey('tempFanOn')) {
+          return;
+        }
         vitals.mode = '${j['mode'] ?? vitals.mode}';
-        vitals.tempFanOn =
-            (j['tempFanOn'] as num?)?.toDouble() ?? vitals.tempFanOn;
-        vitals.tempFanOff =
-            (j['tempFanOff'] as num?)?.toDouble() ?? vitals.tempFanOff;
+        vitals.soilDryOn =
+            (j['soilDryOn'] as num?)?.toDouble() ?? vitals.soilDryOn;
+        vitals.soilWetOff =
+            (j['soilWetOff'] as num?)?.toDouble() ?? vitals.soilWetOff;
+        // map app cũ tempFan* nếu ESP cũ còn gửi
+        if (j.containsKey('tempFanOn') && !j.containsKey('soilDryOn')) {
+          vitals.soilDryOn =
+              ((j['tempFanOn'] as num?)?.toDouble() ?? 28) * 100;
+        }
+        if (j.containsKey('tempFanOff') && !j.containsKey('soilWetOff')) {
+          vitals.soilWetOff =
+              ((j['tempFanOff'] as num?)?.toDouble() ?? 22) * 100;
+        }
         vitals.darkLightOn = (j['darkLightOn'] ?? 1) == 1;
         vitals.gasThreshold =
             (j['gasThreshold'] as num?)?.toInt() ?? vitals.gasThreshold;
         vitals.gasOpenDoor = (j['gasOpenDoor'] ?? 1) == 1;
-        vitals.gasFanOn = (j['gasFanOn'] ?? 1) == 1;
+        vitals.gasPumpOn =
+            (j['gasPumpOn'] ?? j['gasFanOn'] ?? 0) == 1;
         vitals.doorHoldSec =
             (j['doorHoldSec'] as num?)?.toInt() ?? vitals.doorHoldSec;
         vitals.buzzerOnGas = (j['buzzerOnGas'] ?? 1) == 1;
+        vitals.buzzerOnEmpty = (j['buzzerOnEmpty'] ?? 1) == 1;
+        vitals.waterEmptyCm =
+            (j['waterEmptyCm'] as num?)?.toDouble() ?? vitals.waterEmptyCm;
+        vitals.waterOkCm =
+            (j['waterOkCm'] as num?)?.toDouble() ?? vitals.waterOkCm;
+        vitals.autoPumpEmpty = (j['autoPumpEmpty'] ?? 1) == 1;
+        vitals.autoPumpSoil = (j['autoPumpSoil'] ?? 1) == 1;
+        vitals.stopPumpRain = (j['stopPumpRain'] ?? 1) == 1;
       } else if (topic.contains('_led1')) {
-        // Topic led1 thực tế đang điều khiển quạt
-        final j = jsonDecode(payload) as Map<String, dynamic>;
-        vitals.fanOn = '${j['value']}' == 'ON';
-      } else if (topic.contains('_fan_')) {
-        // Topic fan thực tế đang điều khiển đèn
         final j = jsonDecode(payload) as Map<String, dynamic>;
         vitals.lightOn = '${j['value']}' == 'ON';
+      } else if (topic.contains('_fan_')) {
+        final j = jsonDecode(payload) as Map<String, dynamic>;
+        vitals.pumpOn = '${j['value']}' == 'ON';
+      } else if (topic.contains('_water')) {
+        final j = jsonDecode(payload) as Map<String, dynamic>;
+        vitals.waterCm = (j['cm'] as num?)?.toDouble() ?? vitals.waterCm;
+        vitals.waterEmpty = (j['empty'] ?? 0) == 1;
+      } else if (topic.contains('_soil')) {
+        final j = jsonDecode(payload) as Map<String, dynamic>;
+        vitals.soil = (j['value'] as num?)?.toInt() ?? vitals.soil;
+        vitals.soilDry = (j['dry'] ?? 0) == 1;
+      } else if (topic.contains('_rain')) {
+        final j = jsonDecode(payload) as Map<String, dynamic>;
+        vitals.raining = '${j['value']}' == 'ON';
       } else if (topic.contains('_door_')) {
         final j = jsonDecode(payload) as Map<String, dynamic>;
         final v = j['value'];
@@ -173,17 +227,18 @@ class HomeMqtt extends ChangeNotifier {
     if (vitals.mode == 'AUTO') return;
     vitals.lightOn = on;
     notifyListeners();
-    // Swap: đèn UI → topic fan (relay2)
+    await _pub(AppConfig.cmndRelay1, on ? 'ON' : 'OFF');
+  }
+
+  Future<void> setPump(bool on) async {
+    if (vitals.mode == 'AUTO') return;
+    vitals.pumpOn = on;
+    notifyListeners();
     await _pub(AppConfig.cmndRelay2, on ? 'ON' : 'OFF');
   }
 
-  Future<void> setFan(bool on) async {
-    if (vitals.mode == 'AUTO') return;
-    vitals.fanOn = on;
-    notifyListeners();
-    // Swap: quạt UI → topic led1 (relay1)
-    await _pub(AppConfig.cmndRelay1, on ? 'ON' : 'OFF');
-  }
+  /// Alias tương thích
+  Future<void> setFan(bool on) => setPump(on);
 
   Future<void> openDoor() async {
     vitals.door = 90;
@@ -198,36 +253,51 @@ class HomeMqtt extends ChangeNotifier {
   }
 
   Future<void> saveRules({
-    required double tempFanOn,
-    required double tempFanOff,
+    required double soilDryOn,
+    required double soilWetOff,
     required bool darkLightOn,
-    required int gasThreshold,
     required bool gasOpenDoor,
-    required bool gasFanOn,
+    required bool gasPumpOn,
     required int doorHoldSec,
     required bool buzzerOnGas,
+    required bool buzzerOnEmpty,
+    required double waterEmptyCm,
+    required double waterOkCm,
+    required bool autoPumpEmpty,
+    required bool autoPumpSoil,
+    required bool stopPumpRain,
   }) async {
-    vitals.tempFanOn = tempFanOn;
-    vitals.tempFanOff = tempFanOff;
+    vitals.soilDryOn = soilDryOn;
+    vitals.soilWetOff = soilWetOff;
     vitals.darkLightOn = darkLightOn;
-    vitals.gasThreshold = gasThreshold.clamp(0, HomeVitals.gasScaleMax);
     vitals.gasOpenDoor = gasOpenDoor;
-    vitals.gasFanOn = gasFanOn;
+    vitals.gasPumpOn = gasPumpOn;
     vitals.doorHoldSec = doorHoldSec.clamp(1, 60);
     vitals.buzzerOnGas = buzzerOnGas;
+    vitals.buzzerOnEmpty = buzzerOnEmpty;
+    vitals.waterEmptyCm = waterEmptyCm;
+    vitals.waterOkCm = waterOkCm;
+    vitals.autoPumpEmpty = autoPumpEmpty;
+    vitals.autoPumpSoil = autoPumpSoil;
+    vitals.stopPumpRain = stopPumpRain;
     notifyListeners();
     final body = jsonEncode({
       'mode': vitals.mode,
-      'tempFanOn': tempFanOn,
-      'tempFanOff': tempFanOff,
+      'soilDryOn': soilDryOn,
+      'soilWetOff': soilWetOff,
       'darkLightOn': darkLightOn ? 1 : 0,
-      'gasThreshold': vitals.gasThreshold,
       'gasOpenDoor': gasOpenDoor ? 1 : 0,
-      'gasFanOn': gasFanOn ? 1 : 0,
+      'gasPumpOn': gasPumpOn ? 1 : 0,
+      'gasFanOn': gasPumpOn ? 1 : 0,
       'doorHoldSec': vitals.doorHoldSec,
       'buzzerOnGas': buzzerOnGas ? 1 : 0,
+      'buzzerOnEmpty': buzzerOnEmpty ? 1 : 0,
+      'waterEmptyCm': waterEmptyCm,
+      'waterOkCm': waterOkCm,
+      'autoPumpEmpty': autoPumpEmpty ? 1 : 0,
+      'autoPumpSoil': autoPumpSoil ? 1 : 0,
+      'stopPumpRain': stopPumpRain ? 1 : 0,
     });
-    // Publish cả SET và POWER — firmware cũ/mới đều nhận
     await _pub(AppConfig.cmndRules, body);
     await _pub(AppConfig.cmndRulesPower, body);
   }

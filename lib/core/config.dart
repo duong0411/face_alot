@@ -19,7 +19,7 @@ class AppConfig {
 
   static const String _prefsChipId = 'chip_id';
 
-  /// Chip ESP8266 SmartHome (khớp firmware) — mặc định compile-time, đổi runtime theo nhà
+  /// Chip ESP32 SmartHome (khớp firmware) — mặc định compile-time, đổi runtime theo nhà
   static const String defaultChipId = String.fromEnvironment(
     'CHIP_ID',
     defaultValue: '123',
@@ -56,8 +56,8 @@ class AppConfig {
   static String get cmndRules => 'cmnd/${chipId}_rules/SET';
   static String get cmndRulesPower => 'cmnd/${chipId}_rules/POWER';
   static String get cmndRulesGet => 'cmnd/${chipId}_rules/GET';
-  static String get cmndRelay1 => 'cmnd/${chipId}_led1/POWER';
-  static String get cmndRelay2 => 'cmnd/${chipId}_fan_livingroom/POWER';
+  static String get cmndRelay1 => 'cmnd/${chipId}_led1/POWER'; // đèn
+  static String get cmndRelay2 => 'cmnd/${chipId}_fan_livingroom/POWER'; // bơm
 
   static String get teleVitals => 'tele/${chipId}_vitals/status';
   static String get teleMode => 'tele/${chipId}_mode/status';
@@ -65,6 +65,9 @@ class AppConfig {
   static String get teleRelay1 => 'tele/${chipId}_led1/status';
   static String get teleRelay2 => 'tele/${chipId}_fan_livingroom/status';
   static String get teleDoor => 'tele/${chipId}_door_livingroom1/status';
+  static String get teleWater => 'tele/${chipId}_water/status';
+  static String get teleSoil => 'tele/${chipId}_soil/status';
+  static String get teleRain => 'tele/${chipId}_rain/status';
 
   /// Cosine threshold (stem_chamcong_face default 0.45)
   static const double matchThreshold = 0.45;

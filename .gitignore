@@ -58,6 +58,9 @@ assets/models/*.sim.onnx
 face_alot-release.apk
 *.apk
 
+# Arduino/ESP build output
+firmware/**/build/
+
 # Firebase client configs được commit (APK/IPA CI).
 # Không commit service account / admin private key.
 server/gas_fcm_bridge/serviceAccount.json

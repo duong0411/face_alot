@@ -20,9 +20,10 @@ class AppConfig {
   static const String _prefsChipId = 'chip_id';
 
   /// Chip ESP32 SmartHome (khớp firmware) — mặc định compile-time, đổi runtime theo nhà
+  /// ESP32 SmartHome — khác ESP8266 (123) để tránh trùng topic MQTT
   static const String defaultChipId = String.fromEnvironment(
     'CHIP_ID',
-    defaultValue: '123',
+    defaultValue: 'esp32',
   );
 
   static String _chipId = defaultChipId;
@@ -57,13 +58,17 @@ class AppConfig {
   static String get cmndRulesPower => 'cmnd/${chipId}_rules/POWER';
   static String get cmndRulesGet => 'cmnd/${chipId}_rules/GET';
   static String get cmndRelay1 => 'cmnd/${chipId}_led1/POWER'; // đèn
-  static String get cmndRelay2 => 'cmnd/${chipId}_fan_livingroom/POWER'; // bơm
+  static String get cmndPump => 'cmnd/${chipId}_pump/POWER'; // bơm
+  static String get cmndFan => 'cmnd/${chipId}_fan_livingroom/POWER'; // quạt
+  static String get cmndRelay2 => cmndFan; // alias
 
   static String get teleVitals => 'tele/${chipId}_vitals/status';
   static String get teleMode => 'tele/${chipId}_mode/status';
   static String get teleRules => 'tele/${chipId}_rules/status';
   static String get teleRelay1 => 'tele/${chipId}_led1/status';
-  static String get teleRelay2 => 'tele/${chipId}_fan_livingroom/status';
+  static String get telePump => 'tele/${chipId}_pump/status';
+  static String get teleFan => 'tele/${chipId}_fan_livingroom/status';
+  static String get teleRelay2 => teleFan; // alias
   static String get teleDoor => 'tele/${chipId}_door_livingroom1/status';
   static String get teleWater => 'tele/${chipId}_water/status';
   static String get teleSoil => 'tele/${chipId}_soil/status';

@@ -7,7 +7,8 @@
  *  LDR (D0)     → GPIO27
  *  Gas (D0)     → GPIO26   (module cấp 5V)
  *  Buzzer       → GPIO25
- *  Relay IN1/IN2→ GPIO32 / GPIO33  (VCC relay = 5V, ACTIVE LOW)
+ *  Relay IN1/IN2→ GPIO32 / GPIO33  (VCC relay = 5V, ACTIVE HIGH)
+ *  Relay quat IN → GPIO19 (them relay 1 kenh khi mua quat)
  *  Đất (A0)     → GPIO34   (ADC1)
  *  Mưa (D0)     → GPIO35
  *  HC-SR04 TRIG/ECHO → GPIO13 / GPIO14  (VCC=5V; ECHO nên chia áp)
@@ -16,11 +17,11 @@
  * Relay: IN1 = Đèn (topic led1), IN2 = Bơm (topic fan → thay quạt)
  *
  * MQTT (giữ tương thích app):
- *  cmnd/123_mode/POWER          AUTO|MANUAL
- *  cmnd/123_rules/SET           JSON ngưỡng auto
- *  cmnd/123_led1/POWER          ON|OFF   (đèn, chỉ MANUAL)
- *  cmnd/123_fan_livingroom/POWER ON|OFF  (bơm, chỉ MANUAL)
- *  cmnd/123_door_livingroom1 / 123_face_livingroom
+ *  cmnd/esp32_mode/POWER          AUTO|MANUAL
+ *  cmnd/esp32_rules/SET           JSON ngưỡng auto
+ *  cmnd/esp32_led1/POWER          ON|OFF   (đèn, chỉ MANUAL)
+ *  cmnd/esp32_fan_livingroom/POWER ON|OFF  (bơm, chỉ MANUAL)
+ *  cmnd/esp32_door_livingroom1 / esp32_face_livingroom
  *  tele/... vitals gồm soil, rain, waterCm, waterEmpty, pump
  */
 
@@ -30,7 +31,7 @@
 #include <EEPROM.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_SH110X.h>
+#include <Adafruit_SSD1306.h>
 #include <WebSocketsClient.h>
 #include <MQTTPubSubClient.h>
 #include "DHT.h"
@@ -46,7 +47,8 @@ using MqttClient512 = arduino::mqtt::PubSubClient<512>;
 #define PIN_GAS        26   // D0 digital
 #define PIN_BUZZER     25
 #define PIN_RELAY1     32   // IN1 — Đèn  (topic led1)
-#define PIN_RELAY2     33   // IN2 — Bơm  (topic fan)
+#define PIN_RELAY2     33   // Relay2ch IN2 — Bom (pump)
+#define PIN_FAN        19   // Relay quat IN — Quat (fan) them sau
 #define PIN_SOIL       34   // A0 analog ADC1
 #define PIN_RAIN       35   // D0 digital (input-only)
 #define PIN_TRIG       13
@@ -55,9 +57,9 @@ using MqttClient512 = arduino::mqtt::PubSubClient<512>;
 
 #define DHTTYPE        DHT11
 
-// Module relay 2 kênh thường ACTIVE LOW
-#define RELAY_ON       LOW
-#define RELAY_OFF      HIGH
+// Module relay 2 kênh ACTIVE HIGH (đảo lại theo phần cứng thực tế)
+#define RELAY_ON       HIGH
+#define RELAY_OFF      LOW
 
 #define OLED_ADDR      0x3C
 #define SCREEN_W       128
@@ -72,27 +74,28 @@ const byte DNS_PORT = 53;
 #define MQTT_HOST      "mqtt.duynguyen.io.vn"
 #define MQTT_PORT      443
 #define MQTT_PATH      "/mqtt"
-#define CHIP_ID        "123"
+#define CHIP_ID        "esp32"
 
-#define DEV_TEMP       "123_temp_livingroom"
-#define DEV_HUMI       "123_humi_living_room"
-#define DEV_LIGHT      "123_led1"
-#define DEV_PUMP       "123_fan_livingroom"   // topic cũ quạt → bơm
-#define DEV_DOOR       "123_door_livingroom1"
-#define DEV_FACE       "123_face_livingroom"
-#define DEV_GAS        "123_gas_livingroom"
-#define DEV_LDR        "123_ldr_livingroom"
-#define DEV_SOIL       "123_soil"
-#define DEV_RAIN       "123_rain"
-#define DEV_WATER      "123_water"
-#define DEV_MODE       "123_mode"
-#define DEV_RULES      "123_rules"
-#define DEV_VITALS     "123_vitals"
+#define DEV_TEMP       "esp32_temp_livingroom"
+#define DEV_HUMI       "esp32_humi_living_room"
+#define DEV_LIGHT      "esp32_led1"
+#define DEV_PUMP       "esp32_pump"
+#define DEV_FAN        "esp32_fan_livingroom"
+#define DEV_DOOR       "esp32_door_livingroom1"
+#define DEV_FACE       "esp32_face_livingroom"
+#define DEV_GAS        "esp32_gas_livingroom"
+#define DEV_LDR        "esp32_ldr_livingroom"
+#define DEV_SOIL       "esp32_soil"
+#define DEV_RAIN       "esp32_rain"
+#define DEV_WATER      "esp32_water"
+#define DEV_MODE       "esp32_mode"
+#define DEV_RULES      "esp32_rules"
+#define DEV_VITALS     "esp32_vitals"
 
 #define EEPROM_SIZE    512
 #define MAX_WIFI       5
 #define RULES_EEPROM_ADDR 400
-#define RULES_MAGIC    0xB2   // bump khi đổi struct AutoRules
+#define RULES_MAGIC    0xB3   // bump khi đổi struct AutoRules
 
 struct WifiEntry { char ssid[32]; char pass[32]; };
 WifiEntry wifiList[MAX_WIFI];
@@ -116,7 +119,10 @@ struct AutoRules {
   float    waterOkCm;       // khoảng cách <= → đủ nước (hysteresis)
   uint8_t  autoPumpEmpty;   // 1: hết nước → tự bơm (AUTO)
   uint8_t  autoPumpSoil;    // 1: đất khô → tự bơm (AUTO)
-  uint8_t  stopPumpRain;    // 1: mưa → không bơm
+  uint8_t  stopPumpRain;    // 1: mua -> khong bom
+  uint8_t  gasFanOn;        // 1: gas -> bat quat
+  float    tempFanOn;       // >= bat quat
+  float    tempFanOff;      // <= tat quat
 };
 
 AutoRules rules;
@@ -138,13 +144,14 @@ WebServer webServer(80);
 DNSServer dnsServer;
 WebSocketsClient wsClient;
 MqttClient512 mqttClient;
-Adafruit_SH1106G display(SCREEN_W, SCREEN_H, &Wire, -1);
+Adafruit_SSD1306 display(SCREEN_W, SCREEN_H, &Wire, -1);
 
 bool portalActive = false;
 bool oledOk = false;
 int doorAngle = 0;
 String lightState = "OFF";
 String pumpState  = "OFF";
+String fanState   = "OFF";
 bool isGasAlert = false;
 bool isDark = false;
 bool isRaining = false;
@@ -182,6 +189,7 @@ void pubRules();
 void pubVitals();
 void pubLight();
 void pubPump();
+void pubFan();
 void pubDoor();
 void applyAutoLogic();
 void mqttCallback(const String& topicStr, const String& payload);
@@ -229,6 +237,11 @@ void setLight(bool on) {
 void setPump(bool on) {
   digitalWrite(PIN_RELAY2, on ? RELAY_ON : RELAY_OFF);
   pumpState = on ? "ON" : "OFF";
+}
+
+void setFan(bool on) {
+  digitalWrite(PIN_FAN, on ? RELAY_ON : RELAY_OFF);
+  fanState = on ? "ON" : "OFF";
 }
 
 void adjustDoorAngle(int angle) {
@@ -365,6 +378,9 @@ void defaultRules() {
   rules.autoPumpEmpty = 1;
   rules.autoPumpSoil = 1;
   rules.stopPumpRain = 1;
+  rules.gasFanOn = 1;
+  rules.tempFanOn = 30.0f;
+  rules.tempFanOff = 28.0f;
 }
 
 void saveRules() {
@@ -386,47 +402,72 @@ void loadRules() {
   if (rules.soilWetOff >= rules.soilDryOn) rules.soilWetOff = rules.soilDryOn - 200.0f;
   if (rules.waterOkCm >= rules.waterEmptyCm) rules.waterOkCm = rules.waterEmptyCm - 3.0f;
   if (rules.doorHoldSec < 1 || rules.doorHoldSec > 60) rules.doorHoldSec = 5;
+  if (rules.tempFanOff >= rules.tempFanOn) rules.tempFanOff = rules.tempFanOn - 2.0f;
 }
 
 // ─── OLED ────────────────────────────────────────────────────
 void drawRoundBadge(int x, int y, int w, int h, const char* txt, bool on) {
   if (on) {
-    display.fillRoundRect(x, y, w, h, 3, SH110X_WHITE);
-    display.setTextColor(SH110X_BLACK);
+    display.fillRoundRect(x, y, w, h, 3, SSD1306_WHITE);
+    display.setTextColor(SSD1306_BLACK);
   } else {
-    display.drawRoundRect(x, y, w, h, 3, SH110X_WHITE);
-    display.setTextColor(SH110X_WHITE);
+    display.drawRoundRect(x, y, w, h, 3, SSD1306_WHITE);
+    display.setTextColor(SSD1306_WHITE);
   }
   display.setCursor(x + 3, y + 3);
   display.print(txt);
-  display.setTextColor(SH110X_WHITE);
+  display.setTextColor(SSD1306_WHITE);
+}
+
+void i2cScan() {
+  Serial.println(F("I2C scan..."));
+  byte found = 0;
+  for (byte a = 1; a < 127; a++) {
+    Wire.beginTransmission(a);
+    if (Wire.endTransmission() == 0) {
+      Serial.printf("  found 0x%02X\n", a);
+      found++;
+    }
+  }
+  if (!found) Serial.println(F("  (khong thay thiet bi I2C)"));
 }
 
 void oledInit() {
+  Serial.println(F("OLED SSD1306 init (0.96 inch)..."));
   Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL);
-  oledOk = display.begin(OLED_ADDR, true);
+  Wire.setClock(100000);
+  Wire.setTimeOut(50);
+  i2cScan();
+  oledOk = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
   if (!oledOk) {
-    Serial.println(F("OLED SH1106 not found"));
+    Serial.println(F("OLED 0x3C fail — thu 0x3D..."));
+    oledOk = display.begin(SSD1306_SWITCHCAPVCC, 0x3D);
+  }
+  if (!oledOk) {
+    Serial.println(F("OLED not found — tiep tuc khong man hinh"));
     return;
   }
   display.setRotation(OLED_ROTATION);
   display.clearDisplay();
   display.setTextSize(1);
-  display.setTextColor(SH110X_WHITE);
+  display.setTextColor(SSD1306_WHITE);
   display.setCursor(18, 18);
   display.println(F("SmartHome ESP32"));
   display.setCursor(10, 34);
   display.println(F("Dang khoi dong..."));
-  display.drawRoundRect(4, 8, 120, 48, 6, SH110X_WHITE);
+  display.drawRoundRect(4, 8, 120, 48, 6, SSD1306_WHITE);
   display.display();
+  display.invertDisplay(false);
+  display.dim(false);
+  Serial.println(F("OLED SSD1306 OK"));
 }
 
 void oledDrawPortal() {
   display.clearDisplay();
-  display.drawRoundRect(0, 0, 128, 64, 4, SH110X_WHITE);
+  display.drawRoundRect(0, 0, 128, 64, 4, SSD1306_WHITE);
   display.setCursor(28, 8);
   display.println(F("WiFi PORTAL"));
-  display.drawFastHLine(8, 20, 112, SH110X_WHITE);
+  display.drawFastHLine(8, 20, 112, SSD1306_WHITE);
   display.setCursor(10, 28);
   display.println(F("SSID: SmartHome"));
   display.setCursor(10, 42);
@@ -437,13 +478,13 @@ void oledDrawPortal() {
 void oledDrawHome() {
   display.clearDisplay();
 
-  display.fillRect(0, 0, 128, 14, SH110X_WHITE);
-  display.setTextColor(SH110X_BLACK);
+  display.fillRect(0, 0, 128, 14, SSD1306_WHITE);
+  display.setTextColor(SSD1306_BLACK);
   display.setCursor(4, 3);
   display.print(F("SmartHome32"));
   display.setCursor(78, 3);
   display.print(rules.mode == MODE_AUTO ? F("AUTO") : F("MAN"));
-  display.setTextColor(SH110X_WHITE);
+  display.setTextColor(SSD1306_WHITE);
 
   display.setCursor(4, 18);
   if (!isnan(lastTemp)) {
@@ -468,10 +509,11 @@ void oledDrawHome() {
     display.setTextSize(1);
   }
 
-  drawRoundBadge(4, 40, 36, 12, lightState == "ON" ? "DEN*" : "DEN", lightState == "ON");
-  drawRoundBadge(44, 40, 36, 12, pumpState == "ON" ? "BOM*" : "BOM", pumpState == "ON");
-  drawRoundBadge(84, 40, 40, 12,
-                 isGasAlert ? "GAS!" : (isWaterEmpty ? "HET!" : "OK"),
+  drawRoundBadge(2, 40, 30, 12, lightState == "ON" ? "DEN*" : "DEN", lightState == "ON");
+  drawRoundBadge(34, 40, 30, 12, pumpState == "ON" ? "BOM*" : "BOM", pumpState == "ON");
+  drawRoundBadge(66, 40, 30, 12, fanState == "ON" ? "QUAT*" : "QUAT", fanState == "ON");
+  drawRoundBadge(98, 40, 28, 12,
+                 isGasAlert ? "GAS" : (isWaterEmpty ? "HET" : "OK"),
                  isGasAlert || isWaterEmpty);
 
   display.setCursor(4, 55);
@@ -483,11 +525,11 @@ void oledDrawHome() {
                  isDark ? " T" : " S");
 
   if (millis() < faceMsgUntil && lastFaceName[0]) {
-    display.fillRect(0, 52, 128, 12, SH110X_WHITE);
-    display.setTextColor(SH110X_BLACK);
+    display.fillRect(0, 52, 128, 12, SSD1306_WHITE);
+    display.setTextColor(SSD1306_BLACK);
     display.setCursor(4, 54);
     display.printf("Hi %s", lastFaceName);
-    display.setTextColor(SH110X_WHITE);
+    display.setTextColor(SSD1306_WHITE);
   }
 
   display.display();
@@ -495,11 +537,11 @@ void oledDrawHome() {
 
 void oledDrawRules() {
   display.clearDisplay();
-  display.fillRect(0, 0, 128, 14, SH110X_WHITE);
-  display.setTextColor(SH110X_BLACK);
+  display.fillRect(0, 0, 128, 14, SSD1306_WHITE);
+  display.setTextColor(SSD1306_BLACK);
   display.setCursor(4, 3);
   display.print(rules.mode == MODE_AUTO ? F("RULES*AUTO") : F("RULES*MAN"));
-  display.setTextColor(SH110X_WHITE);
+  display.setTextColor(SSD1306_WHITE);
   display.setCursor(4, 18);
   display.printf("Dat %.0f/%.0f", rules.soilDryOn, rules.soilWetOff);
   display.setCursor(4, 30);
@@ -645,6 +687,19 @@ void applyAutoLogic() {
                   wantPump ? "ON" : "OFF", isWaterEmpty, isSoilDry, isRaining);
   }
 
+
+  // Quat theo nhiet + gas
+  bool wantFan = false;
+  if (!isnan(lastTemp)) {
+    if (fanState == "ON") wantFan = (lastTemp > rules.tempFanOff);
+    else wantFan = (lastTemp >= rules.tempFanOn);
+  }
+  if (rules.gasFanOn && isGasAlert) wantFan = true;
+  if ((fanState == "ON") != wantFan) {
+    setFan(wantFan);
+    pubFan();
+  }
+
   if (rules.gasOpenDoor && isGasAlert && doorAngle < 45) {
     openDoorForAccess("GasAlert");
     pubDoor();
@@ -667,6 +722,10 @@ void pubLight() {
 void pubPump() {
   pumpState = relayRead(PIN_RELAY2);
   mqttPub(DEV_PUMP, "{\"value\":\"" + pumpState + "\"}");
+}
+void pubFan() {
+  fanState = relayRead(PIN_FAN);
+  mqttPub(DEV_FAN, "{\"value\":\"" + fanState + "\"}");
 }
 void pubDoor() { mqttPub(DEV_DOOR, "{\"value\":" + String(doorAngle) + "}"); }
 void pubGas() {
@@ -713,7 +772,10 @@ void pubRules() {
   j += "\"waterOkCm\":" + String(rules.waterOkCm, 1) + ",";
   j += "\"autoPumpEmpty\":" + String(rules.autoPumpEmpty ? 1 : 0) + ",";
   j += "\"autoPumpSoil\":" + String(rules.autoPumpSoil ? 1 : 0) + ",";
-  j += "\"stopPumpRain\":" + String(rules.stopPumpRain ? 1 : 0);
+  j += "\"stopPumpRain\":" + String(rules.stopPumpRain ? 1 : 0) + ",";
+  j += "\"gasFanOn\":" + String(rules.gasFanOn ? 1 : 0) + ",";
+  j += "\"tempFanOn\":" + String(rules.tempFanOn, 1) + ",";
+  j += "\"tempFanOff\":" + String(rules.tempFanOff, 1);
   j += "}";
   mqttPub(DEV_RULES, j);
 }
@@ -724,7 +786,7 @@ void pubVitals() {
   j += "\"gasAlert\":" + String(isGasAlert ? 1 : 0) + ",";
   j += "\"dark\":" + String(isDark ? 1 : 0) + ",";
   j += "\"light\":\"" + lightState + "\",";
-  j += "\"fan\":\"" + pumpState + "\",";   // alias app cũ
+  j += "\"fan\":\"" + fanState + "\",";
   j += "\"pump\":\"" + pumpState + "\",";
   j += "\"door\":" + String(doorAngle) + ",";
   j += "\"soil\":" + String(lastSoilRaw) + ",";
@@ -824,7 +886,9 @@ void handleRulesPayload(String cmd) {
     }
     if (jsonHasKey(cmd, "gasOpenDoor")) rules.gasOpenDoor = jsonInt(cmd, "gasOpenDoor", rules.gasOpenDoor) ? 1 : 0;
     if (jsonHasKey(cmd, "gasPumpOn")) rules.gasPumpOn = jsonInt(cmd, "gasPumpOn", rules.gasPumpOn) ? 1 : 0;
-    else if (jsonHasKey(cmd, "gasFanOn")) rules.gasPumpOn = jsonInt(cmd, "gasFanOn", rules.gasPumpOn) ? 1 : 0;
+    if (jsonHasKey(cmd, "gasFanOn")) rules.gasFanOn = jsonInt(cmd, "gasFanOn", rules.gasFanOn) ? 1 : 0;
+    if (jsonHasKey(cmd, "tempFanOn")) rules.tempFanOn = jsonFloat(cmd, "tempFanOn", rules.tempFanOn);
+    if (jsonHasKey(cmd, "tempFanOff")) rules.tempFanOff = jsonFloat(cmd, "tempFanOff", rules.tempFanOff);
     if (jsonHasKey(cmd, "doorHoldSec")) {
       int s = jsonInt(cmd, "doorHoldSec", rules.doorHoldSec);
       if (s < 1) s = 1;
@@ -935,6 +999,14 @@ void mqttCallback(const String& topicStr, const String& payload) {
     } else {
       Serial.println(F("Bo qua bom: dang AUTO"));
     }
+  } else if (topic.indexOf(DEV_FAN) >= 0) {
+    if (rules.mode == MODE_MANUAL) {
+      setFan(cmd == "ON");
+      pubFan();
+      pubVitals();
+    } else {
+      Serial.println(F("Bo qua quat: dang AUTO"));
+    }
   }
 }
 
@@ -962,6 +1034,7 @@ void reconnectMQTT() {
 
   sub(String("cmnd/") + DEV_LIGHT + "/POWER");
   sub(String("cmnd/") + DEV_PUMP + "/POWER");
+  sub(String("cmnd/") + DEV_FAN + "/POWER");
   sub(String("cmnd/") + DEV_DOOR + "/POWER");
   sub(String("cmnd/") + DEV_FACE + "/POWER");
   sub(String("cmnd/") + DEV_MODE + "/POWER");
@@ -975,6 +1048,7 @@ void reconnectMQTT() {
   pubVitals();
   pubLight(); wsClient.loop(); delay(20);
   pubPump();
+  pubFan();
   pubDoor();
   pubGas();
   pubLdr();
@@ -1044,7 +1118,9 @@ void startPortal() {
   portalActive = true;
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
-  WiFi.softAP(AP_SSID, AP_PASSWORD);
+  bool apOk = WiFi.softAP(AP_SSID, AP_PASSWORD);
+  Serial.printf("softAP(%s) => %d IP=%s\n", AP_SSID, apOk ? 1 : 0,
+                WiFi.softAPIP().toString().c_str());
   dnsServer.start(DNS_PORT, "*", apIP);
   webServer.on("/", HTTP_GET, handleRoot);
   webServer.on("/scan", HTTP_GET, handleScan);
@@ -1075,13 +1151,16 @@ void clearDoubleResetFlag() {
 }
 
 void setup() {
-  // Relay ACTIVE LOW → ghi HIGH ngay để tắt
+  // Relay ACTIVE HIGH → ghi LOW ngay để tắt
   pinMode(PIN_RELAY1, OUTPUT);
   pinMode(PIN_RELAY2, OUTPUT);
+  pinMode(PIN_FAN, OUTPUT);
   digitalWrite(PIN_RELAY1, RELAY_OFF);
   digitalWrite(PIN_RELAY2, RELAY_OFF);
+  digitalWrite(PIN_FAN, RELAY_OFF);
   lightState = "OFF";
   pumpState = "OFF";
+  fanState = "OFF";
 
   pinMode(PIN_BUZZER, OUTPUT);
   digitalWrite(PIN_BUZZER, LOW);
@@ -1097,21 +1176,25 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println(F("\n=== SmartHome ESP32 AUTO/MANUAL ==="));
-  Serial.println(F("Relay ACTIVE LOW | Gas D0 GPIO26 | Water HC-SR04 Kalman"));
-  Serial.println(F("IN1=Den GPIO32 | IN2=Bom GPIO33 | Buzzer GPIO25"));
+  Serial.println(F("Relay ACTIVE HIGH | Gas D0 GPIO26 | Water HC-SR04 Kalman"));
+  Serial.println(F("IN1=Den32 IN2=Bom33 FAN=GPIO19 ChipID=esp32"));
 
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
 
+  Serial.println(F("DHT..."));
   dht.begin();
+  Serial.println(F("Rules EEPROM..."));
   loadRules();
   oledInit();
 
-  beep(100);
-  delay(60);
-  beep(100);
+  Serial.println(F("Buzzer test..."));
+  beep(80);
+  delay(40);
+  beep(80);
   digitalWrite(PIN_BUZZER, LOW);
 
+  Serial.println(F("Servo..."));
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
   ESP32PWM::allocateTimer(2);
@@ -1126,11 +1209,30 @@ void setup() {
   mqttClient.begin(wsClient);
 
   loadWifiList();
-  checkDoubleReset();
+  // EEPROM rác sau chip mới: wifiCount ảo → không bao giờ vào portal
+  bool wifiLooksValid = false;
+  for (int i = 0; i < wifiCount; i++) {
+    if (wifiList[i].ssid[0] != 0 && wifiList[i].ssid[0] != (char)0xFF) {
+      wifiLooksValid = true;
+      break;
+    }
+  }
+  if (!wifiLooksValid) wifiCount = 0;
 
-  if (isDoubleReset) startPortal();
-  else if (!(wifiCount > 0 && connectBestWifi())) startPortal();
-  else oledDraw();
+  checkDoubleReset();
+  Serial.printf("wifiCount=%d doubleReset=%d\n", wifiCount, isDoubleReset ? 1 : 0);
+
+  if (isDoubleReset) {
+    Serial.println(F("=> WiFi PORTAL (double reset)"));
+    startPortal();
+  } else if (!(wifiCount > 0 && connectBestWifi())) {
+    Serial.println(F("=> WiFi PORTAL (chua co / fail)"));
+    startPortal();
+  } else {
+    Serial.println(F("=> WiFi STA OK"));
+    oledDraw();
+  }
+  Serial.printf("AP SoftAP SSID=%s portal=%d\n", AP_SSID, portalActive ? 1 : 0);
 }
 
 void loop() {

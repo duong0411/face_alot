@@ -18,6 +18,7 @@ class HomeVitals {
   bool dark = false;
   bool lightOn = false;
   bool pumpOn = false;
+  bool fanOn = false;
   int door = 0;
   String mode = 'MANUAL';
 
@@ -28,6 +29,9 @@ class HomeVitals {
   int gasThreshold = 1;
   bool gasOpenDoor = true;
   bool gasPumpOn = false;
+  bool gasFanOn = true;
+  double tempFanOn = 30;
+  double tempFanOff = 28;
   int doorHoldSec = 5;
   bool buzzerOnGas = true;
   bool buzzerOnEmpty = true;
@@ -47,10 +51,6 @@ class HomeVitals {
   static const int soilScaleMax = 4095;
 
   bool get doorOpen => door > 10;
-
-  /// Alias tương thích UI cũ
-  bool get fanOn => pumpOn;
-  set fanOn(bool v) => pumpOn = v;
 }
 
 class HomeMqtt extends ChangeNotifier {
@@ -80,9 +80,10 @@ class HomeMqtt extends ChangeNotifier {
     client.subscribe(AppConfig.teleVitals, MqttQos.atMostOnce);
     client.subscribe(AppConfig.teleMode, MqttQos.atMostOnce);
     client.subscribe(AppConfig.teleRules, MqttQos.atMostOnce);
-    // ESP32: led1 = đèn, fan topic = bơm (không swap wiring)
+    // ESP32: led1=đèn, pump=bơm, fan=quạt
     client.subscribe(AppConfig.teleRelay1, MqttQos.atMostOnce);
-    client.subscribe(AppConfig.teleRelay2, MqttQos.atMostOnce);
+    client.subscribe(AppConfig.telePump, MqttQos.atMostOnce);
+    client.subscribe(AppConfig.teleFan, MqttQos.atMostOnce);
     client.subscribe(AppConfig.teleDoor, MqttQos.atMostOnce);
     client.subscribe(AppConfig.teleWater, MqttQos.atMostOnce);
     client.subscribe(AppConfig.teleSoil, MqttQos.atMostOnce);
@@ -118,8 +119,8 @@ class HomeMqtt extends ChangeNotifier {
         vitals.gasDigital = (j['gasDigital'] ?? 1) == 1;
         vitals.dark = (j['dark'] ?? 0) == 1;
         vitals.lightOn = '${j['light']}' == 'ON';
-        final pump = j['pump'] ?? j['fan'];
-        vitals.pumpOn = '$pump' == 'ON';
+        vitals.pumpOn = '${j['pump']}' == 'ON';
+        vitals.fanOn = '${j['fan']}' == 'ON';
         vitals.door = (j['door'] as num?)?.toInt() ?? vitals.door;
         vitals.mode = '${j['mode'] ?? vitals.mode}';
         vitals.soil = (j['soil'] as num?)?.toInt() ?? vitals.soil;
@@ -149,21 +150,16 @@ class HomeMqtt extends ChangeNotifier {
             (j['soilDryOn'] as num?)?.toDouble() ?? vitals.soilDryOn;
         vitals.soilWetOff =
             (j['soilWetOff'] as num?)?.toDouble() ?? vitals.soilWetOff;
-        // map app cũ tempFan* nếu ESP cũ còn gửi
-        if (j.containsKey('tempFanOn') && !j.containsKey('soilDryOn')) {
-          vitals.soilDryOn =
-              ((j['tempFanOn'] as num?)?.toDouble() ?? 28) * 100;
-        }
-        if (j.containsKey('tempFanOff') && !j.containsKey('soilWetOff')) {
-          vitals.soilWetOff =
-              ((j['tempFanOff'] as num?)?.toDouble() ?? 22) * 100;
-        }
         vitals.darkLightOn = (j['darkLightOn'] ?? 1) == 1;
         vitals.gasThreshold =
             (j['gasThreshold'] as num?)?.toInt() ?? vitals.gasThreshold;
         vitals.gasOpenDoor = (j['gasOpenDoor'] ?? 1) == 1;
-        vitals.gasPumpOn =
-            (j['gasPumpOn'] ?? j['gasFanOn'] ?? 0) == 1;
+        vitals.gasPumpOn = (j['gasPumpOn'] ?? 0) == 1;
+        vitals.gasFanOn = (j['gasFanOn'] ?? 1) == 1;
+        vitals.tempFanOn =
+            (j['tempFanOn'] as num?)?.toDouble() ?? vitals.tempFanOn;
+        vitals.tempFanOff =
+            (j['tempFanOff'] as num?)?.toDouble() ?? vitals.tempFanOff;
         vitals.doorHoldSec =
             (j['doorHoldSec'] as num?)?.toInt() ?? vitals.doorHoldSec;
         vitals.buzzerOnGas = (j['buzzerOnGas'] ?? 1) == 1;
@@ -178,9 +174,12 @@ class HomeMqtt extends ChangeNotifier {
       } else if (topic.contains('_led1')) {
         final j = jsonDecode(payload) as Map<String, dynamic>;
         vitals.lightOn = '${j['value']}' == 'ON';
-      } else if (topic.contains('_fan_')) {
+      } else if (topic.contains('_pump')) {
         final j = jsonDecode(payload) as Map<String, dynamic>;
         vitals.pumpOn = '${j['value']}' == 'ON';
+      } else if (topic.contains('_fan_')) {
+        final j = jsonDecode(payload) as Map<String, dynamic>;
+        vitals.fanOn = '${j['value']}' == 'ON';
       } else if (topic.contains('_water')) {
         final j = jsonDecode(payload) as Map<String, dynamic>;
         vitals.waterCm = (j['cm'] as num?)?.toDouble() ?? vitals.waterCm;
@@ -234,11 +233,15 @@ class HomeMqtt extends ChangeNotifier {
     if (vitals.mode == 'AUTO') return;
     vitals.pumpOn = on;
     notifyListeners();
-    await _pub(AppConfig.cmndRelay2, on ? 'ON' : 'OFF');
+    await _pub(AppConfig.cmndPump, on ? 'ON' : 'OFF');
   }
 
-  /// Alias tương thích
-  Future<void> setFan(bool on) => setPump(on);
+  Future<void> setFan(bool on) async {
+    if (vitals.mode == 'AUTO') return;
+    vitals.fanOn = on;
+    notifyListeners();
+    await _pub(AppConfig.cmndFan, on ? 'ON' : 'OFF');
+  }
 
   Future<void> openDoor() async {
     vitals.door = 90;
@@ -258,6 +261,9 @@ class HomeMqtt extends ChangeNotifier {
     required bool darkLightOn,
     required bool gasOpenDoor,
     required bool gasPumpOn,
+    required bool gasFanOn,
+    required double tempFanOn,
+    required double tempFanOff,
     required int doorHoldSec,
     required bool buzzerOnGas,
     required bool buzzerOnEmpty,
@@ -272,6 +278,9 @@ class HomeMqtt extends ChangeNotifier {
     vitals.darkLightOn = darkLightOn;
     vitals.gasOpenDoor = gasOpenDoor;
     vitals.gasPumpOn = gasPumpOn;
+    vitals.gasFanOn = gasFanOn;
+    vitals.tempFanOn = tempFanOn;
+    vitals.tempFanOff = tempFanOff;
     vitals.doorHoldSec = doorHoldSec.clamp(1, 60);
     vitals.buzzerOnGas = buzzerOnGas;
     vitals.buzzerOnEmpty = buzzerOnEmpty;
@@ -288,7 +297,9 @@ class HomeMqtt extends ChangeNotifier {
       'darkLightOn': darkLightOn ? 1 : 0,
       'gasOpenDoor': gasOpenDoor ? 1 : 0,
       'gasPumpOn': gasPumpOn ? 1 : 0,
-      'gasFanOn': gasPumpOn ? 1 : 0,
+      'gasFanOn': gasFanOn ? 1 : 0,
+      'tempFanOn': tempFanOn,
+      'tempFanOff': tempFanOff,
       'doorHoldSec': vitals.doorHoldSec,
       'buzzerOnGas': buzzerOnGas ? 1 : 0,
       'buzzerOnEmpty': buzzerOnEmpty ? 1 : 0,

@@ -27,6 +27,9 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
   late bool _darkLight;
   late bool _gasDoor;
   late bool _gasPump;
+  late bool _gasFan;
+  late double _tempFanOn;
+  late double _tempFanOff;
   late double _doorHoldSec;
   late bool _buzzerOnGas;
   late bool _buzzerOnEmpty;
@@ -45,6 +48,9 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
     _darkLight = true;
     _gasDoor = true;
     _gasPump = false;
+    _gasFan = true;
+    _tempFanOn = 30;
+    _tempFanOff = 28;
     _doorHoldSec = 5;
     _buzzerOnGas = true;
     _buzzerOnEmpty = true;
@@ -131,6 +137,9 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
       _darkLight = v.darkLightOn;
       _gasDoor = v.gasOpenDoor;
       _gasPump = v.gasPumpOn;
+      _gasFan = v.gasFanOn;
+      _tempFanOn = v.tempFanOn;
+      _tempFanOff = v.tempFanOff;
       _doorHoldSec = v.doorHoldSec.toDouble();
       _buzzerOnGas = v.buzzerOnGas;
       _buzzerOnEmpty = v.buzzerOnEmpty;
@@ -274,9 +283,11 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                             key: const ValueKey('manual'),
                             lightOn: v.lightOn,
                             pumpOn: v.pumpOn,
+                            fanOn: v.fanOn,
                             doorDeg: v.door,
                             onLight: _mqtt.setLight,
                             onPump: _mqtt.setPump,
+                            onFan: _mqtt.setFan,
                             onOpenDoor: _mqtt.openDoor,
                             onCloseDoor: _mqtt.closeDoor,
                           ),
@@ -289,6 +300,9 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                           darkLight: _darkLight,
                           gasDoor: _gasDoor,
                           gasPump: _gasPump,
+                          gasFan: _gasFan,
+                          tempFanOn: _tempFanOn,
+                          tempFanOff: _tempFanOff,
                           doorHoldSec: _doorHoldSec,
                           buzzerOnGas: _buzzerOnGas,
                           buzzerOnEmpty: _buzzerOnEmpty,
@@ -309,6 +323,14 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                           onDarkLight: (x) => setState(() => _darkLight = x),
                           onGasDoor: (x) => setState(() => _gasDoor = x),
                           onGasPump: (x) => setState(() => _gasPump = x),
+                          onGasFan: (x) => setState(() => _gasFan = x),
+                          onTempFanOn: (x) => setState(() {
+                            _tempFanOn = x;
+                            if (_tempFanOff >= _tempFanOn) {
+                              _tempFanOff = _tempFanOn - 1;
+                            }
+                          }),
+                          onTempFanOff: (x) => setState(() => _tempFanOff = x),
                           onDoorHold: (x) => setState(() => _doorHoldSec = x),
                           onBuzzerGas: (x) => setState(() => _buzzerOnGas = x),
                           onBuzzerEmpty: (x) =>
@@ -332,6 +354,9 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                               darkLightOn: _darkLight,
                               gasOpenDoor: _gasDoor,
                               gasPumpOn: _gasPump,
+                              gasFanOn: _gasFan,
+                              tempFanOn: _tempFanOn,
+                              tempFanOff: _tempFanOff,
                               doorHoldSec: _doorHoldSec.round(),
                               buzzerOnGas: _buzzerOnGas,
                               buzzerOnEmpty: _buzzerOnEmpty,
@@ -438,7 +463,7 @@ class _HouseChipConnect extends StatelessWidget {
                 onSubmitted: (_) => onConnect(),
                 decoration: const InputDecoration(
                   labelText: 'Chip ID',
-                  hintText: 'Ví dụ: 123',
+                  hintText: 'Ví dụ: esp32',
                 ),
               ),
             ),
@@ -535,6 +560,11 @@ class _ExtraVitals extends StatelessWidget {
             icon: Icons.water_damage_outlined,
             label: 'Bơm',
             value: v.pumpOn ? 'ON' : 'OFF',
+          ),
+          _Metric(
+            icon: Icons.air_rounded,
+            label: 'Quạt',
+            value: v.fanOn ? 'ON' : 'OFF',
           ),
         ],
       ),
@@ -675,18 +705,22 @@ class _ManualDevices extends StatelessWidget {
     super.key,
     required this.lightOn,
     required this.pumpOn,
+    required this.fanOn,
     required this.doorDeg,
     required this.onLight,
     required this.onPump,
+    required this.onFan,
     required this.onOpenDoor,
     required this.onCloseDoor,
   });
 
   final bool lightOn;
   final bool pumpOn;
+  final bool fanOn;
   final int doorDeg;
   final ValueChanged<bool> onLight;
   final ValueChanged<bool> onPump;
+  final ValueChanged<bool> onFan;
   final VoidCallback onOpenDoor;
   final VoidCallback onCloseDoor;
 
@@ -726,6 +760,15 @@ class _ManualDevices extends StatelessWidget {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        _DeviceTile(
+          title: 'Quạt',
+          subtitle: fanOn ? 'Đang bật (GPIO19)' : 'Đang tắt — đấu relay GPIO19',
+          icon: Icons.air_rounded,
+          active: fanOn,
+          accent: AppColors.sage,
+          onTap: () => onFan(!fanOn),
         ),
         const SizedBox(height: 12),
         SoftPanel(
@@ -862,6 +905,9 @@ class _AutoRules extends StatelessWidget {
     required this.darkLight,
     required this.gasDoor,
     required this.gasPump,
+    required this.gasFan,
+    required this.tempFanOn,
+    required this.tempFanOff,
     required this.doorHoldSec,
     required this.buzzerOnGas,
     required this.buzzerOnEmpty,
@@ -877,6 +923,9 @@ class _AutoRules extends StatelessWidget {
     required this.onDarkLight,
     required this.onGasDoor,
     required this.onGasPump,
+    required this.onGasFan,
+    required this.onTempFanOn,
+    required this.onTempFanOff,
     required this.onDoorHold,
     required this.onBuzzerGas,
     required this.onBuzzerEmpty,
@@ -893,6 +942,9 @@ class _AutoRules extends StatelessWidget {
   final bool darkLight;
   final bool gasDoor;
   final bool gasPump;
+  final bool gasFan;
+  final double tempFanOn;
+  final double tempFanOff;
   final double doorHoldSec;
   final bool buzzerOnGas;
   final bool buzzerOnEmpty;
@@ -908,6 +960,9 @@ class _AutoRules extends StatelessWidget {
   final ValueChanged<bool> onDarkLight;
   final ValueChanged<bool> onGasDoor;
   final ValueChanged<bool> onGasPump;
+  final ValueChanged<bool> onGasFan;
+  final ValueChanged<double> onTempFanOn;
+  final ValueChanged<double> onTempFanOff;
   final ValueChanged<double> onDoorHold;
   final ValueChanged<bool> onBuzzerGas;
   final ValueChanged<bool> onBuzzerEmpty;
@@ -1038,6 +1093,37 @@ class _AutoRules extends StatelessWidget {
                 value: gasPump,
                 activeThumbColor: AppColors.sage,
                 onChanged: onGasPump,
+              ),
+              Text(
+                'Bật quạt khi ≥ ${tempFanOn.toStringAsFixed(0)}°C',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              Slider(
+                min: 20,
+                max: 40,
+                divisions: 20,
+                value: tempFanOn.clamp(20, 40),
+                activeColor: AppColors.sage,
+                onChanged: onTempFanOn,
+              ),
+              Text(
+                'Tắt quạt khi ≤ ${tempFanOff.toStringAsFixed(0)}°C',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              Slider(
+                min: 18,
+                max: 38,
+                divisions: 20,
+                value: tempFanOff.clamp(18, 38),
+                activeColor: AppColors.sage,
+                onChanged: onTempFanOff,
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Gas → bật quạt'),
+                value: gasFan,
+                activeThumbColor: AppColors.sage,
+                onChanged: onGasFan,
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

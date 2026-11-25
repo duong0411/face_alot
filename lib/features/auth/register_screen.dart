@@ -32,7 +32,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _submit() async {
     if (_chip.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nhập Chip ID nhà (ví dụ 123)')),
+        const SnackBar(content: Text('Nhập Chip ID nhà (ví dụ esp32)')),
       );
       return;
     }
@@ -128,7 +128,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       textInputAction: TextInputAction.done,
                       decoration: const InputDecoration(
                         labelText: 'Chip ID nhà (ESP)',
-                        hintText: 'Ví dụ: 123',
+                        hintText: 'Ví dụ: esp32',
                         prefixIcon: Icon(Icons.memory_rounded),
                       ),
                     ),

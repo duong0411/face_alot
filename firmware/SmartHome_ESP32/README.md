@@ -1,52 +1,40 @@
 # SmartHome ESP32
 
-Firmware chuyển từ ESP8266 → ESP32 theo sơ đồ chân mới: **bơm thay quạt**, thêm **mưa / đất / HC-SR04 + Kalman**, còi cảnh báo gas & hết nước, chế độ **AUTO / MANUAL**.
+Firmware ESP32: **đèn + bơm + quạt**, mưa / đất / HC-SR04 + Kalman, còi gas & hết nước, **AUTO / MANUAL**.
 
-## Board & thư viện (Arduino IDE / PlatformIO)
-
-- Board: **ESP32 Dev Module** (hoặc tương đương)
-- Thư viện:
-  - `Adafruit SH110X` + `Adafruit GFX`
-  - `DHT sensor library` (Adafruit)
-  - `ESP32Servo`
-  - `WebSockets` (Links2004)
-  - `MQTTPubSubClient` (hideakitai)
+Chip ID MQTT: **`esp32`** (khác ESP8266 `123`).
 
 ## Pinout
 
-| Linh kiện | ESP32 |
-|-----------|-------|
-| OLED SDA / SCL | 21 / 22 |
-| DHT11 | 4 |
-| LDR D0 | 27 |
-| Gas D0 | 26 (module 5V) |
-| Buzzer | 25 |
-| Relay IN1 / IN2 | 32 / 33 (ACTIVE LOW, VCC 5V) |
-| Đất A0 | 34 |
-| Mưa D0 | 35 |
-| HC-SR04 TRIG / ECHO | 13 / 14 (ECHO nên chia áp 5V→3.3V) |
-| Servo | 18 (VCC 5V) |
+| STT | Linh kiện | Chân linh kiện | Chân ESP32 | Nguồn & lưu ý |
+|-----|-----------|----------------|------------|----------------|
+| 1 | OLED 0.96" I2C (SSD1306) | VCC / GND / SCL / SDA | 3.3V / GND / **GPIO22** / **GPIO21** | I2C |
+| 2 | DHT11 | VCC / GND / DATA | 3.3V / GND / **GPIO4** | |
+| 3 | Cảm biến quang (D0) | VCC / GND / D0 | 3.3V / GND / **GPIO27** | |
+| 4 | Cảm biến Gas (D0) | VCC / GND / D0 | **VIN 5V** / GND / **GPIO26** | |
+| 5 | Còi (Buzzer) | Signal / GND | **GPIO25** / GND | |
+| 6 | Relay 2 kênh | VCC / GND / IN1 / IN2 | **VIN 5V** / GND / **GPIO32** / **GPIO33** | ACTIVE HIGH; IN1=Đèn, IN2=Bơm |
+| 7 | Relay quạt (1 kênh, mua sau) | VCC / GND / IN | **VIN 5V** / GND / **GPIO19** | Quạt; cùng logic ACTIVE HIGH |
+| 8 | Cảm biến đất (A0) | VCC / GND / A0 | 3.3V / GND / **GPIO34** | ADC1 |
+| 9 | Cảm biến mưa (D0) | VCC / GND / D0 | 3.3V / GND / **GPIO35** | |
+| 10 | HC-SR04 | VCC / GND / TRIG / ECHO | **VIN 5V** / GND / **GPIO13** / **GPIO14** | ECHO nên chia áp |
+| 11 | Servo SG90 | Signal / VCC / GND | **GPIO18** / **VIN 5V** / GND | ESP32Servo |
 
-- **IN1** = Đèn → MQTT `123_led1`
-- **IN2** = Bơm → MQTT `123_fan_livingroom` (topic cũ của quạt)
+### MQTT thiết bị
+
+| Thiết bị | Topic |
+|----------|--------|
+| Đèn | `esp32_led1` |
+| Bơm | `esp32_pump` |
+| Quạt | `esp32_fan_livingroom` |
 
 ## AUTO
 
-- Tối (LDR) → bật đèn
-- Hết nước (`waterCm >= waterEmptyCm`) → còi + **tự bơm**
-- Đất khô (ADC) → tự bơm (tắt khi đủ ẩm / mưa)
-- Gas D0 LOW → còi (+ mở cửa nếu bật rule)
-
-## Hiệu chỉnh mực nước
-
-Đặt cảm biến cố định phía trên bể/chậu, đo khoảng cách thực tế khi cạn / khi đầy, rồi gửi rule:
-
-```json
-{"waterEmptyCm":25,"waterOkCm":18,"autoPumpEmpty":1,"buzzerOnEmpty":1}
-```
-
-Khoảng cách **lớn** = mực nước **thấp/hết**.
+- Tối → đèn
+- Hết nước / đất khô → bơm (mưa → dừng bơm)
+- Nhiệt cao / gas → quạt
+- Gas → còi (+ mở cửa nếu bật rule)
 
 ## WiFi portal
 
-Double-reset nhanh → AP `SmartHome` → `192.168.4.1`.
+Double-reset → AP `SmartHome` → `192.168.4.1`.

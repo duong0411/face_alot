@@ -36,7 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final id = _chipCtrl.text.trim();
     if (id.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nhập Chip ID của nhà (ví dụ 123)')),
+        const SnackBar(content: Text('Nhập Chip ID của nhà (ví dụ esp32)')),
       );
       return;
     }
@@ -274,7 +274,7 @@ class _ChipIdCard extends StatelessWidget {
                     textInputAction: TextInputAction.done,
                     onSubmitted: (_) => onSave(),
                     decoration: const InputDecoration(
-                      hintText: 'Ví dụ: 123',
+                      hintText: 'Ví dụ: esp32',
                       labelText: 'Chip ID',
                     ),
                   ),

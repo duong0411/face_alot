@@ -43,8 +43,8 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
   void initState() {
     super.initState();
     _chipCtrl = TextEditingController(text: AppConfig.chipId);
-    _soilDryOn = 2800;
-    _soilWetOff = 2200;
+    _soilDryOn = 30;
+    _soilWetOff = 50;
     _darkLight = true;
     _gasDoor = true;
     _gasPump = false;
@@ -271,28 +271,26 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                         const SizedBox(height: 12),
                         Text(
                           isAuto
-                              ? 'Đang AUTO — đèn/bơm theo cảm biến + rule dưới đây'
-                              : 'Đang Thủ công — bật/tắt thiết bị bên dưới',
+                              ? 'Đang AUTO — cảm biến điều khiển; chạm thiết bị bên dưới sẽ về Thủ công'
+                              : 'Đang Thủ công — bật/tắt đèn / bơm / quạt trên app',
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                 color: AppColors.inkSoft,
                               ),
                         ),
                         const SizedBox(height: 16),
-                        if (!isAuto) ...[
-                          _ManualDevices(
-                            key: const ValueKey('manual'),
-                            lightOn: v.lightOn,
-                            pumpOn: v.pumpOn,
-                            fanOn: v.fanOn,
-                            doorDeg: v.door,
-                            onLight: _mqtt.setLight,
-                            onPump: _mqtt.setPump,
-                            onFan: _mqtt.setFan,
-                            onOpenDoor: _mqtt.openDoor,
-                            onCloseDoor: _mqtt.closeDoor,
-                          ),
-                          const SizedBox(height: 22),
-                        ],
+                        _ManualDevices(
+                          key: const ValueKey('manual'),
+                          lightOn: v.lightOn,
+                          pumpOn: v.pumpOn,
+                          fanOn: v.fanOn,
+                          doorDeg: v.door,
+                          onLight: _mqtt.setLight,
+                          onPump: _mqtt.setPump,
+                          onFan: _mqtt.setFan,
+                          onOpenDoor: _mqtt.openDoor,
+                          onCloseDoor: _mqtt.closeDoor,
+                        ),
+                        const SizedBox(height: 22),
                         _AutoRules(
                           key: const ValueKey('rules'),
                           soilDryOn: _soilDryOn,
@@ -315,8 +313,8 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                           liveWater: v.waterCm,
                           onSoilDry: (x) => setState(() {
                             _soilDryOn = x;
-                            if (_soilWetOff >= _soilDryOn) {
-                              _soilWetOff = _soilDryOn - 100;
+                            if (_soilWetOff <= _soilDryOn) {
+                              _soilWetOff = (_soilDryOn + 15).clamp(0, 100);
                             }
                           }),
                           onSoilWet: (x) => setState(() => _soilWetOff = x),
@@ -541,8 +539,9 @@ class _ExtraVitals extends StatelessWidget {
         children: [
           _Metric(
             icon: Icons.grass_rounded,
-            label: 'Đất',
-            value: v.soilDry ? 'Khô' : '${v.soil}',
+            label: 'Độ ẩm đất',
+            value: '${v.soil.clamp(0, 100)}%'
+                '${v.soilDry ? ' · khô' : ''}',
             warn: v.soilDry,
           ),
           _Metric(
@@ -995,26 +994,26 @@ class _AutoRules extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Đất khô khi ADC ≥ ${soilDryOn.toStringAsFixed(0)} (đo: $liveSoil)',
+                'Đất khô khi độ ẩm ≤ ${soilDryOn.toStringAsFixed(0)}% (đo: $liveSoil%)',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
               Slider(
-                min: 500,
-                max: 4095,
-                divisions: 70,
-                value: soilDryOn.clamp(500, 4095),
+                min: 0,
+                max: 90,
+                divisions: 90,
+                value: soilDryOn.clamp(0, 90),
                 activeColor: AppColors.sage,
                 onChanged: onSoilDry,
               ),
               Text(
-                'Đất đủ ẩm khi ADC ≤ ${soilWetOff.toStringAsFixed(0)}',
+                'Đất đủ ẩm khi độ ẩm ≥ ${soilWetOff.toStringAsFixed(0)}%',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
               Slider(
-                min: 400,
-                max: 4000,
-                divisions: 70,
-                value: soilWetOff.clamp(400, 4000),
+                min: 10,
+                max: 100,
+                divisions: 90,
+                value: soilWetOff.clamp(10, 100),
                 activeColor: AppColors.sage,
                 onChanged: onSoilWet,
               ),

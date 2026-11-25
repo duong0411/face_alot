@@ -23,8 +23,8 @@ class HomeVitals {
   String mode = 'MANUAL';
 
   // Rule ESP32
-  double soilDryOn = 2800;
-  double soilWetOff = 2200;
+  double soilDryOn = 30;   // % do am <= → khô
+  double soilWetOff = 50;  // % do am >= → đủ ẩm
   bool darkLightOn = true;
   int gasThreshold = 1;
   bool gasOpenDoor = true;
@@ -48,7 +48,7 @@ class HomeVitals {
   double waterCm = 0;
   bool waterEmpty = false;
 
-  static const int soilScaleMax = 4095;
+  static const int soilScaleMax = 100;
 
   bool get doorOpen => door > 10;
 }
@@ -123,7 +123,12 @@ class HomeMqtt extends ChangeNotifier {
         vitals.fanOn = '${j['fan']}' == 'ON';
         vitals.door = (j['door'] as num?)?.toInt() ?? vitals.door;
         vitals.mode = '${j['mode'] ?? vitals.mode}';
-        vitals.soil = (j['soil'] as num?)?.toInt() ?? vitals.soil;
+        // Ưu tiên % (0–100); bỏ qua ADC thô nếu firmware gửi nhầm
+        final soilPct = (j['soilPct'] as num?)?.toInt() ??
+            (j['soil'] as num?)?.toInt();
+        if (soilPct != null) {
+          vitals.soil = soilPct > 100 ? vitals.soil : soilPct.clamp(0, 100);
+        }
         vitals.soilDry = (j['soilDry'] ?? 0) == 1;
         vitals.raining = (j['rain'] ?? 0) == 1;
         vitals.waterCm = (j['waterCm'] as num?)?.toDouble() ?? vitals.waterCm;
@@ -186,7 +191,11 @@ class HomeMqtt extends ChangeNotifier {
         vitals.waterEmpty = (j['empty'] ?? 0) == 1;
       } else if (topic.contains('_soil')) {
         final j = jsonDecode(payload) as Map<String, dynamic>;
-        vitals.soil = (j['value'] as num?)?.toInt() ?? vitals.soil;
+        final soilPct = (j['pct'] as num?)?.toInt() ??
+            (j['value'] as num?)?.toInt();
+        if (soilPct != null && soilPct <= 100) {
+          vitals.soil = soilPct.clamp(0, 100);
+        }
         vitals.soilDry = (j['dry'] ?? 0) == 1;
       } else if (topic.contains('_rain')) {
         final j = jsonDecode(payload) as Map<String, dynamic>;
@@ -223,21 +232,34 @@ class HomeMqtt extends ChangeNotifier {
   }
 
   Future<void> setLight(bool on) async {
-    if (vitals.mode == 'AUTO') return;
+    // Lenh tay → MANUAL (khop firmware forceManual)
+    if (vitals.mode == 'AUTO') {
+      vitals.mode = 'MANUAL';
+      await _pub(AppConfig.cmndMode, 'MANUAL');
+    }
     vitals.lightOn = on;
     notifyListeners();
     await _pub(AppConfig.cmndRelay1, on ? 'ON' : 'OFF');
   }
 
   Future<void> setPump(bool on) async {
-    if (vitals.mode == 'AUTO') return;
+    if (vitals.mode == 'AUTO') {
+      vitals.mode = 'MANUAL';
+      await _pub(AppConfig.cmndMode, 'MANUAL');
+    }
     vitals.pumpOn = on;
     notifyListeners();
-    await _pub(AppConfig.cmndPump, on ? 'ON' : 'OFF');
+    final payload = on ? 'ON' : 'OFF';
+    await _pub(AppConfig.cmndPump, payload);
+    // Tuong thich APK/firmware cu: fan_livingroom = bom
+    await _pub(AppConfig.cmndPumpLegacy, payload);
   }
 
   Future<void> setFan(bool on) async {
-    if (vitals.mode == 'AUTO') return;
+    if (vitals.mode == 'AUTO') {
+      vitals.mode = 'MANUAL';
+      await _pub(AppConfig.cmndMode, 'MANUAL');
+    }
     vitals.fanOn = on;
     notifyListeners();
     await _pub(AppConfig.cmndFan, on ? 'ON' : 'OFF');

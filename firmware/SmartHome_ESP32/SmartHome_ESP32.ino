@@ -19,8 +19,10 @@
  * MQTT (giữ tương thích app):
  *  cmnd/esp32_mode/POWER          AUTO|MANUAL
  *  cmnd/esp32_rules/SET           JSON ngưỡng auto
- *  cmnd/esp32_led1/POWER          ON|OFF   (đèn, chỉ MANUAL)
- *  cmnd/esp32_fan_livingroom/POWER ON|OFF  (bơm, chỉ MANUAL)
+ *  cmnd/esp32_led1/POWER          ON|OFF   (đèn — lệnh tay → MANUAL)
+ *  cmnd/esp32_pump/POWER          ON|OFF   (bơm GPIO32)
+ *  cmnd/esp32_fan_livingroom/POWER ON|OFF  (alias bơm — app cũ)
+ *  cmnd/esp32_fan/POWER           ON|OFF   (quạt GPIO19)
  *  cmnd/esp32_door_livingroom1 / esp32_face_livingroom
  *  tele/... vitals gồm soil, rain, waterCm, waterEmpty, pump
  */
@@ -34,7 +36,7 @@
 #include <Adafruit_SSD1306.h>
 #include <WebSocketsClient.h>
 #include <MQTTPubSubClient.h>
-#include "DHT.h"
+#include "DHTesp.h"   // ổn định hơn DHT.h trên ESP32
 #include <ESP32Servo.h>
 
 using MqttClient512 = arduino::mqtt::PubSubClient<512>;
@@ -42,12 +44,13 @@ using MqttClient512 = arduino::mqtt::PubSubClient<512>;
 // ─── Pins ────────────────────────────────────────────────────
 #define PIN_OLED_SDA   21
 #define PIN_OLED_SCL   22
-#define PIN_DHT         4
+#define PIN_DHT         4   // DHT11 DATA — GPIO4 an toàn, KHÔNG chặn nạp code
 #define PIN_LDR        27
 #define PIN_GAS        26   // D0 digital
-#define PIN_BUZZER     25
-#define PIN_RELAY1     32   // IN1 — Đèn  (topic led1)
-#define PIN_RELAY2     33   // Relay2ch IN2 — Bom (pump)
+#define PIN_BUZZER     25   // coi — dung PWM/tone cho to hon
+// Day thuc te: IN1(GPIO32)=Bom, IN2(GPIO33)=Den
+#define PIN_RELAY1     33   // GPIO33 IN2 — Den (led1)
+#define PIN_RELAY2     32   // GPIO32 IN1 — Bom (pump)
 #define PIN_FAN        19   // Relay quat IN — Quat (fan) them sau
 #define PIN_SOIL       34   // A0 analog ADC1
 #define PIN_RAIN       35   // D0 digital (input-only)
@@ -55,11 +58,15 @@ using MqttClient512 = arduino::mqtt::PubSubClient<512>;
 #define PIN_ECHO       14
 #define PIN_DOOR       18
 
-#define DHTTYPE        DHT11
-
 // Module relay 2 kênh ACTIVE HIGH (đảo lại theo phần cứng thực tế)
 #define RELAY_ON       HIGH
 #define RELAY_OFF      LOW
+
+// Piezo passive: bit-bang ~2.7kHz — KHONG dung LEDC (tranh cướp timer servo SG90).
+#define BUZZER_FREQ_HZ 2700
+#define BUZZER_CHIRP_MS 70
+#define BUZZER_GAP_MS   60
+#define BUZZER_COOLDOWN_MS 5000UL
 
 #define OLED_ADDR      0x3C
 #define SCREEN_W       128
@@ -80,7 +87,8 @@ const byte DNS_PORT = 53;
 #define DEV_HUMI       "esp32_humi_living_room"
 #define DEV_LIGHT      "esp32_led1"
 #define DEV_PUMP       "esp32_pump"
-#define DEV_FAN        "esp32_fan_livingroom"
+#define DEV_PUMP_LEGACY "esp32_fan_livingroom"  // app/APK cu: Bơm dung topic nay
+#define DEV_FAN        "esp32_fan"              // quat GPIO19
 #define DEV_DOOR       "esp32_door_livingroom1"
 #define DEV_FACE       "esp32_face_livingroom"
 #define DEV_GAS        "esp32_gas_livingroom"
@@ -95,7 +103,7 @@ const byte DNS_PORT = 53;
 #define EEPROM_SIZE    512
 #define MAX_WIFI       5
 #define RULES_EEPROM_ADDR 400
-#define RULES_MAGIC    0xB3   // bump khi đổi struct AutoRules
+#define RULES_MAGIC    0xB4   // bump: soil rules theo % (khong con ADC)
 
 struct WifiEntry { char ssid[32]; char pass[32]; };
 WifiEntry wifiList[MAX_WIFI];
@@ -106,8 +114,8 @@ enum ControlMode : uint8_t { MODE_MANUAL = 0, MODE_AUTO = 1 };
 struct AutoRules {
   uint8_t  magic;
   uint8_t  mode;
-  float    soilDryOn;       // ADC đất >= → khô → bơm (AUTO)
-  float    soilWetOff;      // ADC đất <= → đủ ẩm → tắt bơm
+  float    soilDryOn;       // do am % <= → khô → bơm (AUTO)
+  float    soilWetOff;      // do am % >= → đủ ẩm → tắt bơm
   uint8_t  darkLightOn;     // 1: tối → bật đèn
   uint16_t gasThreshold;    // giữ field cho app; gas ESP32 đọc D0
   uint8_t  gasOpenDoor;     // 1: gas → mở cửa
@@ -128,7 +136,7 @@ struct AutoRules {
 AutoRules rules;
 
 #define TELEMETRY_MS     5000
-#define SENSOR_FAST_MS    300
+#define SENSOR_FAST_MS    120   // doc muc nuoc nhanh hon
 #define HEARTBEAT_MS    30000
 #define RECONNECT_MS    10000
 #define OLED_MS           400
@@ -136,9 +144,11 @@ AutoRules rules;
 #define DOOR_CLOSE_ANGLE    0
 #define SOIL_ADC_MAX     4095
 #define WATER_MAX_CM      400.0f
+/** Tren nguong nay coi la loi cam bien (khong phai het nuoc) */
+#define WATER_VALID_MAX_CM 100.0f
 #define US_TIMEOUT_US   30000UL
 
-DHT dht(PIN_DHT, DHTTYPE);
+DHTesp dht;
 Servo servoDoor;
 WebServer webServer(80);
 DNSServer dnsServer;
@@ -163,7 +173,8 @@ char lastFaceName[24] = "";
 unsigned long faceMsgUntil = 0;
 float lastTemp = NAN;
 float lastHumi = NAN;
-int lastSoilRaw = 0;
+int lastSoilRaw = 0;   // ADC 0..4095
+int lastSoilPct = 0;   // do am 0..100% (ADC cao = kho)
 float lastWaterCm = NAN;
 float lastWaterFilt = NAN;
 uint8_t oledPage = 0;
@@ -181,6 +192,9 @@ int wifiRetries = 0;
 bool buzzerWant = false;
 unsigned long buzzerNextToggle = 0;
 bool buzzerPhase = false;
+bool lastGasForBuzz = false;
+bool lastEmptyForBuzz = false;
+unsigned long lastBuzzerChirpAt = 0;
 
 void saveRules();
 void loadRules();
@@ -194,13 +208,13 @@ void pubDoor();
 void applyAutoLogic();
 void mqttCallback(const String& topicStr, const String& payload);
 
-// ─── Kalman 1D cho HC-SR04 ───────────────────────────────────
+// ─── Kalman 1D nhanh + adaptive (theo doi muc nuoc sat thuc te) ─
 class Kalman1D {
 public:
-  float x = 0;      // ước lượng
-  float p = 1;      // covariance
-  float q = 0.08f;  // process noise
-  float r = 2.5f;   // measurement noise (cm^2)
+  float x = 0;
+  float p = 1;
+  float q = 0.55f;   // process: cao -> bam theo thay doi nhanh
+  float r = 0.9f;    // measurement: thap -> tin do HC-SR04 sau median
   bool  primed = false;
 
   float update(float z) {
@@ -210,12 +224,19 @@ public:
       primed = true;
       return x;
     }
-    // predict
-    p = p + q;
-    // update
+    float innov = fabsf(z - x);
+    // Adaptive: nhay lon (tay/vat can) -> tang Q bat kip ngay
+    float qEff = q;
+    if (innov > 8.0f) qEff = q * 12.0f;
+    else if (innov > 3.0f) qEff = q * 4.0f;
+    else if (innov > 1.5f) qEff = q * 2.0f;
+
+    p = p + qEff;
     float k = p / (p + r);
+    if (k > 0.95f) k = 0.95f;
     x = x + k * (z - x);
     p = (1.0f - k) * p;
+    if (p < 0.01f) p = 0.01f;
     return x;
   }
 
@@ -276,36 +297,73 @@ void openDoorForAccess(const char* who) {
   Serial.printf("Door OPEN by %s hold=%us\n", lastFaceName, (unsigned)rules.doorHoldSec);
 }
 
-void beep(uint16_t ms = 80) {
-  digitalWrite(PIN_BUZZER, HIGH);
-  delay(ms);
+void buzzerOff() {
+  pinMode(PIN_BUZZER, OUTPUT);
   digitalWrite(PIN_BUZZER, LOW);
 }
 
-void updateBuzzer() {
-  // Ưu tiên: gas liên tục; hết nước nhịp 400ms
-  bool need = false;
-  unsigned long period = 200;
-  if (isGasAlert && rules.buzzerOnGas) {
-    need = true;
-    period = 120;   // nhanh khi gas/CO2
-  } else if (isWaterEmpty && rules.buzzerOnEmpty) {
-    need = true;
-    period = 400;   // chậm khi hết nước
-  }
-
-  buzzerWant = need;
-  if (!need) {
+/** Xung vuông bit-bang — to vừa, không đụng LEDC/servo/relay PWM. */
+void beep(uint16_t ms = BUZZER_CHIRP_MS) {
+  pinMode(PIN_BUZZER, OUTPUT);
+  const unsigned halfUs = (unsigned)(500000UL / BUZZER_FREQ_HZ);  // ~185us @ 2700Hz
+  unsigned long tEnd = millis() + ms;
+  while ((long)(millis() - tEnd) < 0) {
+    digitalWrite(PIN_BUZZER, HIGH);
+    delayMicroseconds(halfUs);
     digitalWrite(PIN_BUZZER, LOW);
-    buzzerPhase = false;
+    delayMicroseconds(halfUs);
+  }
+  digitalWrite(PIN_BUZZER, LOW);
+}
+
+void buzzerWrite(bool on) {
+  // Chi dung cho tat; bat = beep ngan (tranh giu HIGH/LEDC)
+  if (!on) buzzerOff();
+}
+
+/**
+ * Coi (bit-bang, khong LEDC):
+ *  - Gas/CO2: keu khi vua phat hien + lap moi cooldown (ca MANUAL/AUTO)
+ *  - Het nuoc (HC-SR04): keu canh len o AUTO; bat bom AUTO cung beep trong applyAutoLogic
+ *  - Chi im khi cua dang quay (bao ve SG90)
+ */
+void updateBuzzer() {
+  bool doorBusy = doorAutoClose || (doorAngle > DOOR_CLOSE_ANGLE + 5);
+  bool gasAlertBz = isGasAlert && rules.buzzerOnGas;
+  bool emptyAlert = (rules.mode == MODE_AUTO) && isWaterEmpty &&
+                    rules.buzzerOnEmpty && !isnan(lastWaterFilt);
+
+  if (doorBusy) {
+    buzzerOff();
     return;
   }
+
   unsigned long now = millis();
-  if ((long)(now - buzzerNextToggle) >= 0) {
-    buzzerPhase = !buzzerPhase;
-    digitalWrite(PIN_BUZZER, buzzerPhase ? HIGH : LOW);
-    buzzerNextToggle = now + period;
+  bool gasEdge = gasAlertBz && !lastGasForBuzz;
+  bool emptyEdge = emptyAlert && !lastEmptyForBuzz;
+  lastGasForBuzz = gasAlertBz;
+  lastEmptyForBuzz = emptyAlert;
+
+  bool cooled = (lastBuzzerChirpAt == 0) ||
+                ((now - lastBuzzerChirpAt) >= BUZZER_COOLDOWN_MS);
+  bool gasRepeat = gasAlertBz && cooled && !gasEdge;
+
+  if (!gasEdge && !emptyEdge && !gasRepeat) return;
+  if (!cooled && !gasEdge && !emptyEdge) return;
+
+  if (gasEdge || gasRepeat) {
+    // CO2/gas: 2 chirp
+    beep(BUZZER_CHIRP_MS);
+    delay(BUZZER_GAP_MS);
+    beep(BUZZER_CHIRP_MS);
+    Serial.println(F("BUZZ gas/CO2"));
+  } else if (emptyEdge) {
+    // Het nuoc theo khoang cach — 1 chirp (bom AUTO beep them khi bat)
+    beep(BUZZER_CHIRP_MS);
+    Serial.println(F("BUZZ water EMPTY (HC-SR04)"));
   }
+  lastBuzzerChirpAt = millis();
+  buzzerOff();
 }
 
 // ─── Sensors ─────────────────────────────────────────────────
@@ -327,6 +385,16 @@ int readSoilAvg() {
   return avg;
 }
 
+/** ADC cao = kho, ADC thap = am. Map ve 0..100% do am. */
+int soilAdcToPct(int adc) {
+  // Hieu chinh neu module khac: WET thap hon / DRY cao hon
+  const int adcDry = 4095;  // 0%
+  const int adcWet = 1200;  // 100%
+  if (adc >= adcDry) return 0;
+  if (adc <= adcWet) return 100;
+  return (int)(((long)(adcDry - adc) * 100L) / (adcDry - adcWet));
+}
+
 /** HC-SR04 → cm. Trả NAN nếu lỗi. */
 float readUltrasonicCm() {
   digitalWrite(PIN_TRIG, LOW);
@@ -338,24 +406,32 @@ float readUltrasonicCm() {
   unsigned long dur = pulseIn(PIN_ECHO, HIGH, US_TIMEOUT_US);
   if (dur == 0) return NAN;
   float cm = (dur * 0.0343f) / 2.0f;
-  if (cm < 2.0f || cm > WATER_MAX_CM) return NAN;
+  if (cm < 2.0f || cm > WATER_VALID_MAX_CM) return NAN;  // 312cm... = loi, khong phai EMPTY
   return cm;
 }
 
 float readWaterKalman() {
-  // trung bình 3 lần đo thô rồi Kalman
-  float sum = 0;
+  // 5 lan do nhanh -> median (bo outlier) -> Kalman adaptive
+  float s[5];
   int ok = 0;
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 5; i++) {
     float d = readUltrasonicCm();
-    if (!isnan(d)) {
-      sum += d;
-      ok++;
-    }
-    delay(15);
+    if (!isnan(d)) s[ok++] = d;
+    delayMicroseconds(2500);
   }
-  if (ok == 0) return lastWaterFilt;  // giữ giá trị cũ
-  float raw = sum / ok;
+  if (ok == 0) return lastWaterFilt;
+
+  // insertion sort
+  for (int i = 1; i < ok; i++) {
+    float key = s[i];
+    int j = i - 1;
+    while (j >= 0 && s[j] > key) {
+      s[j + 1] = s[j];
+      j--;
+    }
+    s[j + 1] = key;
+  }
+  float raw = s[ok / 2];  // median = chinh xac hon mean
   lastWaterCm = raw;
   lastWaterFilt = waterKalman.update(raw);
   return lastWaterFilt;
@@ -364,8 +440,8 @@ float readWaterKalman() {
 void defaultRules() {
   rules.magic = RULES_MAGIC;
   rules.mode = MODE_MANUAL;
-  rules.soilDryOn = 2800.0f;    // ADC cao = khô (tùy module)
-  rules.soilWetOff = 2200.0f;
+  rules.soilDryOn = 30.0f;      // % do am <= 30 → kho
+  rules.soilWetOff = 50.0f;     // % do am >= 50 → du am (hysteresis)
   rules.darkLightOn = 1;
   rules.gasThreshold = 1;       // D0: chỉ dùng làm flag app
   rules.gasOpenDoor = 1;
@@ -399,7 +475,15 @@ void loadRules() {
     defaultRules();
     saveRules();
   }
-  if (rules.soilWetOff >= rules.soilDryOn) rules.soilWetOff = rules.soilDryOn - 200.0f;
+  // % do am: wetOff phai > dryOn; ADC cu (>100) -> reset default %
+  if (rules.soilDryOn > 100 || rules.soilWetOff > 100) {
+    rules.soilDryOn = 30.0f;
+    rules.soilWetOff = 50.0f;
+  }
+  if (rules.soilDryOn < 0) rules.soilDryOn = 0;
+  if (rules.soilDryOn > 90) rules.soilDryOn = 90;
+  if (rules.soilWetOff <= rules.soilDryOn) rules.soilWetOff = rules.soilDryOn + 15.0f;
+  if (rules.soilWetOff > 100) rules.soilWetOff = 100;
   if (rules.waterOkCm >= rules.waterEmptyCm) rules.waterOkCm = rules.waterEmptyCm - 3.0f;
   if (rules.doorHoldSec < 1 || rules.doorHoldSec > 60) rules.doorHoldSec = 5;
   if (rules.tempFanOff >= rules.tempFanOn) rules.tempFanOff = rules.tempFanOn - 2.0f;
@@ -478,56 +562,55 @@ void oledDrawPortal() {
 void oledDrawHome() {
   display.clearDisplay();
 
-  display.fillRect(0, 0, 128, 14, SSD1306_WHITE);
+  display.fillRect(0, 0, 128, 12, SSD1306_WHITE);
   display.setTextColor(SSD1306_BLACK);
-  display.setCursor(4, 3);
+  display.setCursor(3, 2);
   display.print(F("SmartHome32"));
-  display.setCursor(78, 3);
+  display.setCursor(78, 2);
   display.print(rules.mode == MODE_AUTO ? F("AUTO") : F("MAN"));
   display.setTextColor(SSD1306_WHITE);
 
-  display.setCursor(4, 18);
-  if (!isnan(lastTemp)) {
-    display.setTextSize(2);
-    display.printf("%.0f", lastTemp);
-    display.setTextSize(1);
-    display.print(F("C"));
-  } else {
-    display.setTextSize(2);
-    display.print(F("--"));
-    display.setTextSize(1);
-  }
-  display.setCursor(52, 18);
-  if (!isnan(lastWaterFilt)) {
-    display.setTextSize(2);
-    display.printf("%.0f", lastWaterFilt);
-    display.setTextSize(1);
-    display.print(F("cm"));
-  } else {
-    display.setTextSize(2);
-    display.print(F("--"));
-    display.setTextSize(1);
-  }
+  // Nhiet | Dat% | Nuoc cm
+  display.setTextSize(2);
+  display.setCursor(2, 15);
+  if (!isnan(lastTemp)) display.printf("%.0f", lastTemp);
+  else display.print(F("--"));
+  display.setTextSize(1);
+  display.print(F("C"));
 
-  drawRoundBadge(2, 40, 30, 12, lightState == "ON" ? "DEN*" : "DEN", lightState == "ON");
-  drawRoundBadge(34, 40, 30, 12, pumpState == "ON" ? "BOM*" : "BOM", pumpState == "ON");
-  drawRoundBadge(66, 40, 30, 12, fanState == "ON" ? "QUAT*" : "QUAT", fanState == "ON");
-  drawRoundBadge(98, 40, 28, 12,
-                 isGasAlert ? "GAS" : (isWaterEmpty ? "HET" : "OK"),
+  display.setTextSize(2);
+  display.setCursor(46, 15);
+  display.printf("%d", lastSoilPct);
+  display.setTextSize(1);
+  display.print(F("%"));
+  if (isSoilDry) display.print(F("K"));
+
+  display.setTextSize(2);
+  display.setCursor(86, 15);
+  if (!isnan(lastWaterFilt)) display.printf("%.0f", lastWaterFilt);
+  else display.print(F("--"));
+  display.setTextSize(1);
+  display.print(F("cm"));
+
+  drawRoundBadge(2, 36, 30, 12, lightState == "ON" ? "DEN*" : "DEN", lightState == "ON");
+  drawRoundBadge(34, 36, 30, 12, pumpState == "ON" ? "BOM*" : "BOM", pumpState == "ON");
+  drawRoundBadge(66, 36, 30, 12, fanState == "ON" ? "QUAT*" : "QUAT", fanState == "ON");
+  drawRoundBadge(98, 36, 28, 12,
+                 isGasAlert ? "CO2" : (isWaterEmpty ? "HET" : "OK"),
                  isGasAlert || isWaterEmpty);
 
-  display.setCursor(4, 55);
-  display.printf("%s%s S:%d%s%s",
+  display.setCursor(2, 52);
+  display.printf("%s%s %s%s%s",
                  WiFi.status() == WL_CONNECTED ? "W" : "-",
                  mqttClient.isConnected() ? "M" : "-",
-                 lastSoilRaw / 100,
-                 isRaining ? " R" : "",
-                 isDark ? " T" : " S");
+                 isRaining ? "MUA " : "",
+                 isDark ? "TOI " : "SANG ",
+                 isGasAlert ? "CO2" : "");
 
   if (millis() < faceMsgUntil && lastFaceName[0]) {
-    display.fillRect(0, 52, 128, 12, SSD1306_WHITE);
+    display.fillRect(0, 50, 128, 14, SSD1306_WHITE);
     display.setTextColor(SSD1306_BLACK);
-    display.setCursor(4, 54);
+    display.setCursor(4, 53);
     display.printf("Hi %s", lastFaceName);
     display.setTextColor(SSD1306_WHITE);
   }
@@ -543,7 +626,7 @@ void oledDrawRules() {
   display.print(rules.mode == MODE_AUTO ? F("RULES*AUTO") : F("RULES*MAN"));
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(4, 18);
-  display.printf("Dat %.0f/%.0f", rules.soilDryOn, rules.soilWetOff);
+  display.printf("Dat %d%% dry<=%.0f", lastSoilPct, rules.soilDryOn);
   display.setCursor(4, 30);
   display.printf("Nuoc >=%.0fcm het", rules.waterEmptyCm);
   display.setCursor(4, 42);
@@ -660,11 +743,11 @@ bool connectBestWifi() {
   return false;
 }
 
-// ─── AUTO logic ──────────────────────────────────────────────
+// ─── AUTO logic — CHI chay khi MODE_AUTO (cam bien). MANUAL = chi app. ─
 void applyAutoLogic() {
   if (rules.mode != MODE_AUTO) return;
 
-  // Đèn theo LDR
+  // Den theo LDR (neu bat rule)
   if (rules.darkLightOn) {
     bool wantLight = isDark;
     if ((lightState == "ON") != wantLight) {
@@ -673,22 +756,34 @@ void applyAutoLogic() {
     }
   }
 
-  // Bơm: hết nước (HC-SR04) và/hoặc đất khô — hysteresis đất qua isSoilDry
+  // Bom theo rule cam bien (khong bat het moi thu neu rule tat)
   bool wantPump = false;
-  if (rules.autoPumpEmpty && isWaterEmpty) wantPump = true;
+  const bool emptyWant = rules.autoPumpEmpty && isWaterEmpty && !isnan(lastWaterFilt);
+  if (emptyWant) wantPump = true;
   if (rules.autoPumpSoil && isSoilDry) wantPump = true;
   if (rules.gasPumpOn && isGasAlert) wantPump = true;
   if (rules.stopPumpRain && isRaining) wantPump = false;
 
   if ((pumpState == "ON") != wantPump) {
+    const bool wasOff = (pumpState != "ON");
     setPump(wantPump);
     pubPump();
     Serial.printf("AUTO pump => %s empty=%d soilDry=%d rain=%d\n",
                   wantPump ? "ON" : "OFF", isWaterEmpty, isSoilDry, isRaining);
+    // Coi khi AUTO vua BAT bom theo cam bien khoang cach (het nuoc)
+    if (wantPump && wasOff && emptyWant && rules.buzzerOnEmpty) {
+      bool doorBusy = doorAutoClose || (doorAngle > DOOR_CLOSE_ANGLE + 5);
+      if (!doorBusy) {
+        beep(BUZZER_CHIRP_MS);
+        delay(BUZZER_GAP_MS);
+        beep(BUZZER_CHIRP_MS);
+        lastBuzzerChirpAt = millis();
+        Serial.println(F("BUZZ AUTO pump ON (HC-SR04 empty)"));
+      }
+    }
   }
 
-
-  // Quat theo nhiet + gas
+  // Quat theo nhiet + gas (theo rule)
   bool wantFan = false;
   if (!isnan(lastTemp)) {
     if (fanState == "ON") wantFan = (lastTemp > rules.tempFanOff);
@@ -704,6 +799,47 @@ void applyAutoLogic() {
     openDoorForAccess("GasAlert");
     pubDoor();
   }
+}
+
+/** true neu payload la ON (chap nhan ON/1/JSON). */
+bool payloadIsOn(String cmd) {
+  cmd.trim();
+  cmd.toUpperCase();
+  if (cmd == "ON" || cmd == "1" || cmd == "TRUE") return true;
+  if (cmd == "OFF" || cmd == "0" || cmd == "FALSE") return false;
+  // {"value":"ON"} — tranh match nham trong OFF
+  if (cmd.indexOf("\"ON\"") >= 0) return true;
+  return false;
+}
+
+/** Chuyen MANUAL. Chi tat bom/quat khi ROI AUTO (tranh cuu save rule tat bom tay). */
+void enterManualMode() {
+  const bool fromAuto = (rules.mode == MODE_AUTO);
+  rules.mode = MODE_MANUAL;
+  if (fromAuto) {
+    setPump(false);
+    setFan(false);
+    pubPump();
+    pubFan();
+    buzzerOff();
+  }
+  Serial.println(F("MODE=MANUAL — bom/quat/den chi theo app, khong theo cam bien"));
+}
+
+void enterAutoMode() {
+  rules.mode = MODE_AUTO;
+  Serial.println(F("MODE=AUTO — den/bom/quat theo cam bien + rule"));
+  applyAutoLogic();
+}
+
+/** Lenh tay tu app: ep MANUAL (khong tat thiet bi dang nhan lenh), roi moi set. */
+void forceManualForHandControl() {
+  if (rules.mode == MODE_MANUAL) return;
+  rules.mode = MODE_MANUAL;
+  saveRules();
+  pubMode();
+  pubRules();
+  Serial.println(F("Lenh tay → ep MANUAL"));
 }
 
 // ─── MQTT ────────────────────────────────────────────────────
@@ -735,7 +871,9 @@ void pubLdr() {
   mqttPub(DEV_LDR, isDark ? "{\"value\":\"DARK\"}" : "{\"value\":\"LIGHT\"}");
 }
 void pubSoil() {
-  mqttPub(DEV_SOIL, "{\"value\":" + String(lastSoilRaw) +
+  mqttPub(DEV_SOIL, "{\"value\":" + String(lastSoilPct) +
+                    ",\"pct\":" + String(lastSoilPct) +
+                    ",\"adc\":" + String(lastSoilRaw) +
                     ",\"dry\":" + String(isSoilDry ? 1 : 0) + "}");
 }
 void pubRain() {
@@ -789,7 +927,9 @@ void pubVitals() {
   j += "\"fan\":\"" + fanState + "\",";
   j += "\"pump\":\"" + pumpState + "\",";
   j += "\"door\":" + String(doorAngle) + ",";
-  j += "\"soil\":" + String(lastSoilRaw) + ",";
+  j += "\"soil\":" + String(lastSoilPct) + ",";
+  j += "\"soilPct\":" + String(lastSoilPct) + ",";
+  j += "\"soilAdc\":" + String(lastSoilRaw) + ",";
   j += "\"soilDry\":" + String(isSoilDry ? 1 : 0) + ",";
   j += "\"rain\":" + String(isRaining ? 1 : 0) + ",";
   j += "\"waterCm\":" + String(isnan(lastWaterFilt) ? 0 : lastWaterFilt, 1) + ",";
@@ -835,15 +975,20 @@ bool jsonHasKey(const String& s, const char* key) {
 void handleModePayload(String cmd) {
   cmd.trim();
   cmd.toUpperCase();
-  if (cmd.indexOf("AUTO") >= 0) rules.mode = MODE_AUTO;
-  else if (cmd.indexOf("MANUAL") >= 0 || cmd.indexOf("MAN") >= 0) rules.mode = MODE_MANUAL;
-  else if (cmd == "ON" || cmd == "1") rules.mode = MODE_AUTO;
-  else if (cmd == "OFF" || cmd == "0") rules.mode = MODE_MANUAL;
+  bool toAuto = false;
+  bool toMan = false;
+  if (cmd.indexOf("AUTO") >= 0 || cmd == "ON" || cmd == "1") toAuto = true;
+  else if (cmd.indexOf("MANUAL") >= 0 || cmd.indexOf("MAN") >= 0 ||
+           cmd == "OFF" || cmd == "0") toMan = true;
+  else return;
+
+  if (toAuto) enterAutoMode();
+  else if (toMan) enterManualMode();
+
   saveRules();
   pubMode();
   pubRules();
   pubVitals();
-  if (rules.mode == MODE_AUTO) applyAutoLogic();
   forceOledRulesPage();
   beep(40);
   Serial.printf("Mode => %s\n", rules.mode == MODE_AUTO ? "AUTO" : "MANUAL");
@@ -869,14 +1014,15 @@ void handleRulesPayload(String cmd) {
       String m = jsonValueToken(cmd, "mode");
       m.replace("\"", "");
       m.toUpperCase();
-      if (m.indexOf("AUTO") >= 0) rules.mode = MODE_AUTO;
-      else if (m.indexOf("MANUAL") >= 0) rules.mode = MODE_MANUAL;
+      if (m.indexOf("AUTO") >= 0) {
+        if (rules.mode != MODE_AUTO) enterAutoMode();
+      } else if (m.indexOf("MANUAL") >= 0) {
+        if (rules.mode != MODE_MANUAL) enterManualMode();
+      }
     }
     // Đất — ưu tiên key mới; map tempFan* nếu app cũ còn gửi
     if (jsonHasKey(cmd, "soilDryOn")) rules.soilDryOn = jsonFloat(cmd, "soilDryOn", rules.soilDryOn);
-    else if (jsonHasKey(cmd, "tempFanOn")) rules.soilDryOn = jsonFloat(cmd, "tempFanOn", rules.soilDryOn) * 100.0f;
     if (jsonHasKey(cmd, "soilWetOff")) rules.soilWetOff = jsonFloat(cmd, "soilWetOff", rules.soilWetOff);
-    else if (jsonHasKey(cmd, "tempFanOff")) rules.soilWetOff = jsonFloat(cmd, "tempFanOff", rules.soilWetOff) * 100.0f;
 
     if (jsonHasKey(cmd, "darkLightOn")) rules.darkLightOn = jsonInt(cmd, "darkLightOn", rules.darkLightOn) ? 1 : 0;
     if (jsonHasKey(cmd, "gasThreshold")) {
@@ -907,7 +1053,10 @@ void handleRulesPayload(String cmd) {
     return;
   }
 
-  if (rules.soilWetOff >= rules.soilDryOn) rules.soilWetOff = rules.soilDryOn - 200.0f;
+  if (rules.soilDryOn < 0) rules.soilDryOn = 0;
+  if (rules.soilDryOn > 90) rules.soilDryOn = 90;
+  if (rules.soilWetOff <= rules.soilDryOn) rules.soilWetOff = rules.soilDryOn + 15.0f;
+  if (rules.soilWetOff > 100) rules.soilWetOff = 100;
   if (rules.waterOkCm >= rules.waterEmptyCm) rules.waterOkCm = rules.waterEmptyCm - 3.0f;
   saveRules();
   pubRules();
@@ -915,10 +1064,8 @@ void handleRulesPayload(String cmd) {
   pubVitals();
   if (rules.mode == MODE_AUTO) applyAutoLogic();
   forceOledRulesPage(12000);
-  digitalWrite(PIN_BUZZER, HIGH);
-  delay(30);
-  digitalWrite(PIN_BUZZER, LOW);
-  Serial.printf("Rules OK soil=%.0f/%.0f water=%.1f/%.1f mode=%s\n",
+  beep(30);
+  Serial.printf("Rules OK soil%% dry<=%.0f wet>=%.0f water=%.1f/%.1f mode=%s\n",
                 rules.soilDryOn, rules.soilWetOff, rules.waterEmptyCm, rules.waterOkCm,
                 rules.mode == MODE_AUTO ? "AUTO" : "MANUAL");
 }
@@ -945,10 +1092,10 @@ void handleFacePayload(String cmd) {
     }
     if (up != "ON" && up != "OPEN" && up != "1" && cmd.length() > 0) name = cmd;
   }
-  beep(60);
   openDoorForAccess(name.c_str());
   pubDoor();
   pubFaceEvent(name.c_str(), "OPEN");
+  beep(40);  // sau khi gui xung servo — khong cuop LEDC
 }
 
 void handleDoorPayload(String cmd) {
@@ -984,29 +1131,25 @@ void mqttCallback(const String& topicStr, const String& payload) {
   } else if (topic.indexOf(DEV_DOOR) >= 0) {
     handleDoorPayload(cmd);
   } else if (topic.indexOf(DEV_LIGHT) >= 0) {
-    if (rules.mode == MODE_MANUAL) {
-      setLight(cmd == "ON");
-      pubLight();
-      pubVitals();
-    } else {
-      Serial.println(F("Bo qua den: dang AUTO"));
-    }
-  } else if (topic.indexOf(DEV_PUMP) >= 0) {
-    if (rules.mode == MODE_MANUAL) {
-      setPump(cmd == "ON");
-      pubPump();
-      pubVitals();
-    } else {
-      Serial.println(F("Bo qua bom: dang AUTO"));
-    }
+    forceManualForHandControl();
+    setLight(payloadIsOn(cmd));
+    pubLight();
+    pubVitals();
+    Serial.printf("MANUAL light => %s\n", lightState.c_str());
+  } else if (topic.indexOf(DEV_PUMP) >= 0 || topic.indexOf(DEV_PUMP_LEGACY) >= 0) {
+    // esp32_pump + esp32_fan_livingroom (legacy) → relay bom GPIO32
+    forceManualForHandControl();
+    setPump(payloadIsOn(cmd));
+    pubPump();
+    pubVitals();
+    Serial.printf("MANUAL pump => %s (GPIO%d) topic=%s\n",
+                  pumpState.c_str(), PIN_RELAY2, topic.c_str());
   } else if (topic.indexOf(DEV_FAN) >= 0) {
-    if (rules.mode == MODE_MANUAL) {
-      setFan(cmd == "ON");
-      pubFan();
-      pubVitals();
-    } else {
-      Serial.println(F("Bo qua quat: dang AUTO"));
-    }
+    forceManualForHandControl();
+    setFan(payloadIsOn(cmd));
+    pubFan();
+    pubVitals();
+    Serial.printf("MANUAL fan => %s (GPIO%d)\n", fanState.c_str(), PIN_FAN);
   }
 }
 
@@ -1034,6 +1177,7 @@ void reconnectMQTT() {
 
   sub(String("cmnd/") + DEV_LIGHT + "/POWER");
   sub(String("cmnd/") + DEV_PUMP + "/POWER");
+  sub(String("cmnd/") + DEV_PUMP_LEGACY + "/POWER"); // Bơm — app cũ
   sub(String("cmnd/") + DEV_FAN + "/POWER");
   sub(String("cmnd/") + DEV_DOOR + "/POWER");
   sub(String("cmnd/") + DEV_FACE + "/POWER");
@@ -1162,8 +1306,7 @@ void setup() {
   pumpState = "OFF";
   fanState = "OFF";
 
-  pinMode(PIN_BUZZER, OUTPUT);
-  digitalWrite(PIN_BUZZER, LOW);
+  buzzerOff();  // khong beep boot — tranh sut ap servo/relay
 
   pinMode(PIN_LDR, INPUT_PULLUP);
   pinMode(PIN_GAS, INPUT_PULLUP);
@@ -1177,22 +1320,32 @@ void setup() {
   delay(200);
   Serial.println(F("\n=== SmartHome ESP32 AUTO/MANUAL ==="));
   Serial.println(F("Relay ACTIVE HIGH | Gas D0 GPIO26 | Water HC-SR04 Kalman"));
-  Serial.println(F("IN1=Den32 IN2=Bom33 FAN=GPIO19 ChipID=esp32"));
+    Serial.println(F("Den=GPIO33 Bom=GPIO32 FAN=GPIO19 ChipID=esp32"));
 
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
 
-  Serial.println(F("DHT..."));
-  dht.begin();
+  // DHT11 @ GPIO4: không phải chân boot — nạp code bình thường.
+  // Nên có điện trở kéo lên 4.7k–10k DATA→3.3V (nhiều module đã có sẵn).
+  Serial.printf("DHT11 init GPIO%d ...\n", PIN_DHT);
+  pinMode(PIN_DHT, INPUT_PULLUP);
+  dht.setup(PIN_DHT, DHTesp::DHT11);
+  delay(1500);  // DHT11 cần ~1s sau nguồn mới đọc ổn
+  {
+    TempAndHumidity th = dht.getTempAndHumidity();
+    if (dht.getStatus() == DHTesp::ERROR_NONE) {
+      lastTemp = th.temperature;
+      lastHumi = th.humidity;
+      Serial.printf("DHT OK T=%.1f H=%.0f\n", lastTemp, lastHumi);
+    } else {
+      Serial.printf("DHT warmup status=%s (se retry)\n", dht.getStatusString());
+    }
+  }
   Serial.println(F("Rules EEPROM..."));
   loadRules();
   oledInit();
 
-  Serial.println(F("Buzzer test..."));
-  beep(80);
-  delay(40);
-  beep(80);
-  digitalWrite(PIN_BUZZER, LOW);
+  buzzerOff();  // bit-bang coi, khong LEDC — servo giu timer 0–3
 
   Serial.println(F("Servo..."));
   ESP32PWM::allocateTimer(0);
@@ -1300,11 +1453,13 @@ void loop() {
 
     // Đất analog
     lastSoilRaw = readSoilAvg();
+    lastSoilPct = soilAdcToPct(lastSoilRaw);
+    // % thap = kho. Hysteresis: kho den khi % >= wetOff; am lai kho khi % <= dryOn
     bool soilDry;
     if (isSoilDry) {
-      soilDry = (lastSoilRaw > (int)rules.soilWetOff);
+      soilDry = (lastSoilPct < (int)rules.soilWetOff);
     } else {
-      soilDry = (lastSoilRaw >= (int)rules.soilDryOn);
+      soilDry = (lastSoilPct <= (int)rules.soilDryOn);
     }
     if (soilDry != isSoilDry) {
       isSoilDry = soilDry;
@@ -1312,12 +1467,12 @@ void loop() {
       pubVitals();
     }
 
-    // Mực nước Kalman
+    // Muc nuoc Kalman — chi cap nhat EMPTY khi do hop le
     float w = readWaterKalman();
     if (!isnan(w)) {
       bool empty;
       if (isWaterEmpty) {
-        empty = (w > rules.waterOkCm);     // hết → chỉ hết khi vẫn > ok
+        empty = (w > rules.waterOkCm);
       } else {
         empty = (w >= rules.waterEmptyCm);
       }
@@ -1328,9 +1483,14 @@ void loop() {
         Serial.printf("Water empty=%d cm=%.1f (raw=%.1f)\n",
                       isWaterEmpty, lastWaterFilt, lastWaterCm);
       }
+    } else if (isWaterEmpty) {
+      // Mat tin hieu HC-SR04: khong giu EMPTY ao (tranh bom/coi lien tuc)
+      isWaterEmpty = false;
+      Serial.println(F("Water INVALID — clear EMPTY flag"));
     }
 
-    applyAutoLogic();
+    // Chi AUTO moi dieu khien thiet bi theo cam bien
+    if (rules.mode == MODE_AUTO) applyAutoLogic();
   }
 
   if (now - lastHeartbeat >= HEARTBEAT_MS) {
@@ -1341,19 +1501,36 @@ void loop() {
 
   if (now - lastTelemetry >= TELEMETRY_MS) {
     lastTelemetry = now;
-    float h = dht.readHumidity();
-    float t = dht.readTemperature();
-    if (!isnan(t) && !isnan(h)) {
-      lastTemp = t;
-      lastHumi = h;
-      pubTemp(t);
-      pubHumi(h);
+    bool dhtOk = false;
+    for (int attempt = 0; attempt < 3 && !dhtOk; attempt++) {
+      if (attempt) delay(50);
+      TempAndHumidity th = dht.getTempAndHumidity();
+      if (dht.getStatus() == DHTesp::ERROR_NONE &&
+          !isnan(th.temperature) && !isnan(th.humidity)) {
+        lastTemp = th.temperature;
+        lastHumi = th.humidity;
+        pubTemp(lastTemp);
+        pubHumi(lastHumi);
+        dhtOk = true;
+      }
+    }
+    if (!dhtOk) {
+      Serial.printf("DHT FAIL status=%s pin=%d (kiem tra VCC/GND/DATA+pullup)\n",
+                    dht.getStatusString(), PIN_DHT);
     }
     pubSoil();
     pubWater();
     pubRain();
     pubVitals();
     applyAutoLogic();
+    Serial.printf(
+      "SENS T=%.1fC H=%.0f%% soil=%d%%(adc=%d)%s water=%.1fcm%s rain=%d gas=%d dark=%d LDR=%d GAS_D0=%d\n",
+      isnan(lastTemp) ? -1.0f : lastTemp,
+      isnan(lastHumi) ? -1.0f : lastHumi,
+      lastSoilPct, lastSoilRaw, isSoilDry ? "(DRY)" : "",
+      isnan(lastWaterFilt) ? -1.0f : lastWaterFilt, isWaterEmpty ? "(EMPTY)" : "",
+      isRaining ? 1 : 0, isGasAlert ? 1 : 0, isDark ? 1 : 0,
+      digitalRead(PIN_LDR), digitalRead(PIN_GAS));
   }
 
   if (now - lastOled >= OLED_MS) {

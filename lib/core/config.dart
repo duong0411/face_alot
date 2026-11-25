@@ -58,17 +58,20 @@ class AppConfig {
   static String get cmndRulesPower => 'cmnd/${chipId}_rules/POWER';
   static String get cmndRulesGet => 'cmnd/${chipId}_rules/GET';
   static String get cmndRelay1 => 'cmnd/${chipId}_led1/POWER'; // đèn
-  static String get cmndPump => 'cmnd/${chipId}_pump/POWER'; // bơm
-  static String get cmndFan => 'cmnd/${chipId}_fan_livingroom/POWER'; // quạt
-  static String get cmndRelay2 => cmndFan; // alias
+  static String get cmndPump => 'cmnd/${chipId}_pump/POWER'; // bơm GPIO32
+  /// App/APK cũ hay dùng topic này cho bơm — firmware vẫn nhận như pump
+  static String get cmndPumpLegacy =>
+      'cmnd/${chipId}_fan_livingroom/POWER';
+  static String get cmndFan => 'cmnd/${chipId}_fan/POWER'; // quạt GPIO19
+  static String get cmndRelay2 => cmndPump; // alias → bơm
 
   static String get teleVitals => 'tele/${chipId}_vitals/status';
   static String get teleMode => 'tele/${chipId}_mode/status';
   static String get teleRules => 'tele/${chipId}_rules/status';
   static String get teleRelay1 => 'tele/${chipId}_led1/status';
   static String get telePump => 'tele/${chipId}_pump/status';
-  static String get teleFan => 'tele/${chipId}_fan_livingroom/status';
-  static String get teleRelay2 => teleFan; // alias
+  static String get teleFan => 'tele/${chipId}_fan/status';
+  static String get teleRelay2 => telePump; // alias → bơm
   static String get teleDoor => 'tele/${chipId}_door_livingroom1/status';
   static String get teleWater => 'tele/${chipId}_water/status';
   static String get teleSoil => 'tele/${chipId}_soil/status';

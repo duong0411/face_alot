@@ -39,6 +39,9 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
   late bool _autoPumpSoil;
   late bool _stopPumpRain;
 
+  /// Đang kéo slider / chỉnh rule — không để tele MQTT kéo giá trị về cũ.
+  bool _editingRules = false;
+
   @override
   void initState() {
     super.initState();
@@ -131,25 +134,33 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
 
   void _syncFromMqtt() {
     final v = _mqtt.vitals;
-    setState(() {
-      _soilDryOn = v.soilDryOn;
-      _soilWetOff = v.soilWetOff;
-      _darkLight = v.darkLightOn;
-      _gasDoor = v.gasOpenDoor;
-      _gasPump = v.gasPumpOn;
-      _gasFan = v.gasFanOn;
-      _tempFanOn = v.tempFanOn;
-      _tempFanOff = v.tempFanOff;
-      _doorHoldSec = v.doorHoldSec.toDouble();
-      _buzzerOnGas = v.buzzerOnGas;
-      _buzzerOnEmpty = v.buzzerOnEmpty;
-      _waterEmptyCm = v.waterEmptyCm;
-      _waterOkCm = v.waterOkCm;
-      _autoPumpEmpty = v.autoPumpEmpty;
-      _autoPumpSoil = v.autoPumpSoil;
-      _stopPumpRain = v.stopPumpRain;
-    });
+    // Vitals/tele vẫn rebuild UI qua AnimatedBuilder; chỉ đồng bộ rule khi
+    // người dùng không đang chỉnh (tránh slider bị kéo lại mỗi vài giây).
+    if (!_editingRules) {
+      setState(() {
+        _soilDryOn = v.soilDryOn;
+        _soilWetOff = v.soilWetOff;
+        _darkLight = v.darkLightOn;
+        _gasDoor = v.gasOpenDoor;
+        _gasPump = v.gasPumpOn;
+        _gasFan = v.gasFanOn;
+        _tempFanOn = v.tempFanOn;
+        _tempFanOff = v.tempFanOff;
+        _doorHoldSec = v.doorHoldSec.toDouble();
+        _buzzerOnGas = v.buzzerOnGas;
+        _buzzerOnEmpty = v.buzzerOnEmpty;
+        _waterEmptyCm = v.waterEmptyCm;
+        _waterOkCm = v.waterOkCm;
+        _autoPumpEmpty = v.autoPumpEmpty;
+        _autoPumpSoil = v.autoPumpSoil;
+        _stopPumpRain = v.stopPumpRain;
+      });
+    }
     _maybeShowGasDialog(v);
+  }
+
+  void _markEditingRules() {
+    if (!_editingRules) _editingRules = true;
   }
 
   void _maybeShowGasDialog(HomeVitals v) {
@@ -312,39 +323,78 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                           liveSoil: v.soil,
                           liveWater: v.waterCm,
                           onSoilDry: (x) => setState(() {
+                            _markEditingRules();
                             _soilDryOn = x;
                             if (_soilWetOff <= _soilDryOn) {
                               _soilWetOff = (_soilDryOn + 15).clamp(0, 100);
                             }
                           }),
-                          onSoilWet: (x) => setState(() => _soilWetOff = x),
-                          onDarkLight: (x) => setState(() => _darkLight = x),
-                          onGasDoor: (x) => setState(() => _gasDoor = x),
-                          onGasPump: (x) => setState(() => _gasPump = x),
-                          onGasFan: (x) => setState(() => _gasFan = x),
+                          onSoilWet: (x) => setState(() {
+                            _markEditingRules();
+                            _soilWetOff = x;
+                          }),
+                          onDarkLight: (x) => setState(() {
+                            _markEditingRules();
+                            _darkLight = x;
+                          }),
+                          onGasDoor: (x) => setState(() {
+                            _markEditingRules();
+                            _gasDoor = x;
+                          }),
+                          onGasPump: (x) => setState(() {
+                            _markEditingRules();
+                            _gasPump = x;
+                          }),
+                          onGasFan: (x) => setState(() {
+                            _markEditingRules();
+                            _gasFan = x;
+                          }),
                           onTempFanOn: (x) => setState(() {
+                            _markEditingRules();
                             _tempFanOn = x;
                             if (_tempFanOff >= _tempFanOn) {
                               _tempFanOff = _tempFanOn - 1;
                             }
                           }),
-                          onTempFanOff: (x) => setState(() => _tempFanOff = x),
-                          onDoorHold: (x) => setState(() => _doorHoldSec = x),
-                          onBuzzerGas: (x) => setState(() => _buzzerOnGas = x),
-                          onBuzzerEmpty: (x) =>
-                              setState(() => _buzzerOnEmpty = x),
+                          onTempFanOff: (x) => setState(() {
+                            _markEditingRules();
+                            _tempFanOff = x;
+                          }),
+                          onDoorHold: (x) => setState(() {
+                            _markEditingRules();
+                            _doorHoldSec = x;
+                          }),
+                          onBuzzerGas: (x) => setState(() {
+                            _markEditingRules();
+                            _buzzerOnGas = x;
+                          }),
+                          onBuzzerEmpty: (x) => setState(() {
+                            _markEditingRules();
+                            _buzzerOnEmpty = x;
+                          }),
                           onWaterEmpty: (x) => setState(() {
+                            _markEditingRules();
                             _waterEmptyCm = x;
                             if (_waterOkCm >= _waterEmptyCm) {
                               _waterOkCm = _waterEmptyCm - 2;
                             }
                           }),
-                          onWaterOk: (x) => setState(() => _waterOkCm = x),
-                          onAutoPumpEmpty: (x) =>
-                              setState(() => _autoPumpEmpty = x),
-                          onAutoPumpSoil: (x) =>
-                              setState(() => _autoPumpSoil = x),
-                          onStopRain: (x) => setState(() => _stopPumpRain = x),
+                          onWaterOk: (x) => setState(() {
+                            _markEditingRules();
+                            _waterOkCm = x;
+                          }),
+                          onAutoPumpEmpty: (x) => setState(() {
+                            _markEditingRules();
+                            _autoPumpEmpty = x;
+                          }),
+                          onAutoPumpSoil: (x) => setState(() {
+                            _markEditingRules();
+                            _autoPumpSoil = x;
+                          }),
+                          onStopRain: (x) => setState(() {
+                            _markEditingRules();
+                            _stopPumpRain = x;
+                          }),
                           onSave: () async {
                             await _mqtt.saveRules(
                               soilDryOn: _soilDryOn,
@@ -365,6 +415,7 @@ class _SmartControlScreenState extends State<SmartControlScreen> {
                               stopPumpRain: _stopPumpRain,
                             );
                             if (!mounted) return;
+                            setState(() => _editingRules = false);
                             ScaffoldMessenger.of(this.context).showSnackBar(
                               const SnackBar(
                                 content: Text(

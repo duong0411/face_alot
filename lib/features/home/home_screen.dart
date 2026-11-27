@@ -163,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     _HubAction(
                       icon: Icons.home_rounded,
                       title: 'Điều khiển nhà',
-                      subtitle: 'Đèn · quạt · cửa · chế độ tự động',
+                      subtitle: 'Đèn · bơm · cửa · chế độ tự động',
                       accent: AppColors.sage,
                       delay: 0,
                       onTap: () => Navigator.push(

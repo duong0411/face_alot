@@ -64,7 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Đèn, quạt, cửa — điều khiển nhà và mở cửa bằng khuôn mặt.',
+                'Đèn, bơm, cửa — điều khiển nhà và mở cửa bằng khuôn mặt.',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: AppColors.inkSoft,
                       height: 1.4,

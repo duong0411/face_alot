@@ -2,7 +2,7 @@ name: Build APK & IPA + Release
 
 on:
   push:
-    branches: [main, 'feature/**']
+    branches: [main, 'feature/**', 'cursor/**']
     tags: ['v*']
   workflow_dispatch:
 

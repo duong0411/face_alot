@@ -62,7 +62,6 @@ class AppConfig {
   /// App/APK cũ hay dùng topic này cho bơm — firmware vẫn nhận như pump
   static String get cmndPumpLegacy =>
       'cmnd/${chipId}_fan_livingroom/POWER';
-  static String get cmndFan => 'cmnd/${chipId}_fan/POWER'; // quạt GPIO19
   static String get cmndRelay2 => cmndPump; // alias → bơm
 
   static String get teleVitals => 'tele/${chipId}_vitals/status';
@@ -70,7 +69,6 @@ class AppConfig {
   static String get teleRules => 'tele/${chipId}_rules/status';
   static String get teleRelay1 => 'tele/${chipId}_led1/status';
   static String get telePump => 'tele/${chipId}_pump/status';
-  static String get teleFan => 'tele/${chipId}_fan/status';
   static String get teleRelay2 => telePump; // alias → bơm
   static String get teleDoor => 'tele/${chipId}_door_livingroom1/status';
   static String get teleWater => 'tele/${chipId}_water/status';

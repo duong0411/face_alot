@@ -273,14 +273,14 @@ class HomeMqtt extends ChangeNotifier {
     vitals.gasPumpOn = gasPumpOn;
     vitals.doorHoldSec = doorHoldSec.clamp(1, 60);
     vitals.buzzerOnGas = buzzerOnGas;
-    vitals.buzzerOnEmpty = false;
+    vitals.buzzerOnEmpty = true;
     vitals.waterEmptyCm = waterEmptyCm.clamp(1, 10);
     vitals.waterOkCm = waterOkCm.clamp(1, 10);
     vitals.autoPumpEmpty = false;
     vitals.autoPumpSoil = autoPumpSoil;
     vitals.stopPumpRain = stopPumpRain;
     notifyListeners();
-    // App bỏ quạt + bỏ còi/AUTO bơm khi hết nước; gửi 0 để tắt trên MCU
+    // Bỏ quạt + bỏ AUTO bơm hết nước; giữ còi hết nước (firmware kêu 5s AUTO)
     final body = jsonEncode({
       'mode': vitals.mode,
       'soilDryOn': soilDryOn,
@@ -290,7 +290,7 @@ class HomeMqtt extends ChangeNotifier {
       'gasPumpOn': gasPumpOn ? 1 : 0,
       'doorHoldSec': vitals.doorHoldSec,
       'buzzerOnGas': buzzerOnGas ? 1 : 0,
-      'buzzerOnEmpty': 0,
+      'buzzerOnEmpty': 1,
       'waterEmptyCm': vitals.waterEmptyCm,
       'waterOkCm': vitals.waterOkCm,
       'autoPumpEmpty': 0,

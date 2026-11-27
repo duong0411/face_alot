@@ -67,6 +67,7 @@ using MqttClient512 = arduino::mqtt::PubSubClient<512>;
 #define BUZZER_CHIRP_MS 70
 #define BUZZER_GAP_MS   60
 #define BUZZER_COOLDOWN_MS 5000UL
+#define BUZZER_EMPTY_HOLD_MS 5000UL  // AUTO hết nước: còi kêu liên tục 5s
 
 #define OLED_ADDR      0x3C
 #define SCREEN_W       128
@@ -195,6 +196,7 @@ bool buzzerPhase = false;
 bool lastGasForBuzz = false;
 bool lastEmptyForBuzz = false;
 unsigned long lastBuzzerChirpAt = 0;
+unsigned long emptyBuzzUntil = 0;  // millis deadline — AUTO hết nước buzz liên tục
 
 void saveRules();
 void loadRules();
@@ -324,7 +326,7 @@ void buzzerWrite(bool on) {
 /**
  * Coi (bit-bang, khong LEDC):
  *  - Gas/CO2: keu khi vua phat hien + lap moi cooldown (ca MANUAL/AUTO)
- *  - Het nuoc (HC-SR04): keu canh len o AUTO; bat bom AUTO cung beep trong applyAutoLogic
+ *  - Het nuoc (HC-SR04) o AUTO: keu lien tuc 5s (edge), khong lap khi van het
  *  - Chi im khi cua dang quay (bao ve SG90)
  */
 void updateBuzzer() {
@@ -333,35 +335,49 @@ void updateBuzzer() {
   bool emptyAlert = (rules.mode == MODE_AUTO) && isWaterEmpty &&
                     rules.buzzerOnEmpty && !isnan(lastWaterFilt);
 
-  if (doorBusy) {
-    buzzerOff();
-    return;
-  }
-
   unsigned long now = millis();
   bool gasEdge = gasAlertBz && !lastGasForBuzz;
   bool emptyEdge = emptyAlert && !lastEmptyForBuzz;
   lastGasForBuzz = gasAlertBz;
   lastEmptyForBuzz = emptyAlert;
 
+  if (emptyEdge) {
+    emptyBuzzUntil = now + BUZZER_EMPTY_HOLD_MS;
+    lastBuzzerChirpAt = now;
+    Serial.println(F("BUZZ water EMPTY 5s (HC-SR04 AUTO)"));
+  }
+
+  // AUTO hết nước: kêu liên tục đến hết cửa sổ 5s (burst ngắn mỗi vòng loop)
+  if (emptyBuzzUntil != 0) {
+    if ((long)(now - emptyBuzzUntil) >= 0) {
+      emptyBuzzUntil = 0;
+      buzzerOff();
+    } else if (doorBusy) {
+      buzzerOff();
+      return;
+    } else {
+      beep(40);
+      return;  // ưu tiên báo hết nước trong 5s
+    }
+  }
+
+  if (doorBusy) {
+    buzzerOff();
+    return;
+  }
+
   bool cooled = (lastBuzzerChirpAt == 0) ||
                 ((now - lastBuzzerChirpAt) >= BUZZER_COOLDOWN_MS);
   bool gasRepeat = gasAlertBz && cooled && !gasEdge;
 
-  if (!gasEdge && !emptyEdge && !gasRepeat) return;
-  if (!cooled && !gasEdge && !emptyEdge) return;
+  if (!gasEdge && !gasRepeat) return;
+  if (!cooled && !gasEdge) return;
 
-  if (gasEdge || gasRepeat) {
-    // CO2/gas: 2 chirp
-    beep(BUZZER_CHIRP_MS);
-    delay(BUZZER_GAP_MS);
-    beep(BUZZER_CHIRP_MS);
-    Serial.println(F("BUZZ gas/CO2"));
-  } else if (emptyEdge) {
-    // Het nuoc theo khoang cach — 1 chirp (bom AUTO beep them khi bat)
-    beep(BUZZER_CHIRP_MS);
-    Serial.println(F("BUZZ water EMPTY (HC-SR04)"));
-  }
+  // CO2/gas: 2 chirp
+  beep(BUZZER_CHIRP_MS);
+  delay(BUZZER_GAP_MS);
+  beep(BUZZER_CHIRP_MS);
+  Serial.println(F("BUZZ gas/CO2"));
   lastBuzzerChirpAt = millis();
   buzzerOff();
 }
@@ -765,22 +781,10 @@ void applyAutoLogic() {
   if (rules.stopPumpRain && isRaining) wantPump = false;
 
   if ((pumpState == "ON") != wantPump) {
-    const bool wasOff = (pumpState != "ON");
     setPump(wantPump);
     pubPump();
     Serial.printf("AUTO pump => %s empty=%d soilDry=%d rain=%d\n",
                   wantPump ? "ON" : "OFF", isWaterEmpty, isSoilDry, isRaining);
-    // Coi khi AUTO vua BAT bom theo cam bien khoang cach (het nuoc)
-    if (wantPump && wasOff && emptyWant && rules.buzzerOnEmpty) {
-      bool doorBusy = doorAutoClose || (doorAngle > DOOR_CLOSE_ANGLE + 5);
-      if (!doorBusy) {
-        beep(BUZZER_CHIRP_MS);
-        delay(BUZZER_GAP_MS);
-        beep(BUZZER_CHIRP_MS);
-        lastBuzzerChirpAt = millis();
-        Serial.println(F("BUZZ AUTO pump ON (HC-SR04 empty)"));
-      }
-    }
   }
 
   // Quat theo nhiet + gas (theo rule)

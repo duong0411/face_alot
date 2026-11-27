@@ -3,7 +3,7 @@ HƯỚNG DẪN HỒ SƠ GỬI KHÁCH — FACE AIOT + NHÀ THÔNG MINH AI XIAOZHI
 Theo phụ lục Công văn 7292/BGDĐT-GDPT và mẫu báo cáo STEM trong docs/
 
 Tên dự án:
-Nhà thông minh Face AIoT tích hợp nhận diện khuôn mặt và trợ lý giọng nói tiếng Việt AI Xiaozhi (ESP32-S3)
+Nhà thông minh tích hợp nhận diện khuôn mặt và điều khiển IoT qua ứng dụng di động (Face AIoT)
 
 Lĩnh vực: Hệ thống nhúng và Phần mềm hệ thống / Khoa học máy tính – IoT – Trí tuệ nhân tạo
 

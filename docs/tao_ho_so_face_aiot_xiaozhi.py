@@ -34,11 +34,12 @@ PL_BASE = (
 OUT = ROOT / "HO_SO_GUI_KHACH_FaceAIoT_Xiaozhi"
 IMG_OUT = OUT / "anh_minh_hoa"
 
+# Tên đúng theo Quyết định cử SP dự thi KHKT/STEM cấp tỉnh (THPT A Nguyễn Khuyến)
 TEN_DU_AN = (
-    "Nhà thông minh Face AIoT tích hợp nhận diện khuôn mặt và "
-    "trợ lý giọng nói tiếng Việt AI Xiaozhi (ESP32-S3)"
+    "Nhà thông minh tích hợp nhận diện khuôn mặt và "
+    "điều khiển IoT qua ứng dụng di động (Face AIoT)"
 )
-TEN_NGAN = "Nhà thông minh Face AIoT – AI Xiaozhi"
+TEN_NGAN = "Nhà thông minh Face AIoT"
 LINH_VUC = "Hệ thống nhúng và Phần mềm hệ thống / Khoa học máy tính – IoT – Trí tuệ nhân tạo"
 LOAI = "Dự án kỹ thuật (STEM)"
 NAVY = RGBColor(0x1F, 0x4E, 0x79)

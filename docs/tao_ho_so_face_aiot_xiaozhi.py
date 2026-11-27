@@ -1279,11 +1279,27 @@ def build_ke_hoach(local: dict[str, Path]):
         first_line=False,
     )
 
-    section_banner("VI. DỰ KIẾN KẾT QUẢ")
-    add_bullet(doc, "01 nguyên mẫu nhà thông minh Face AIoT + Xiaozhi vận hành được trên mô hình thật.")
-    add_bullet(doc, "App nhận diện mở cửa khi đạt ngưỡng cosine; Xiaozhi điều khiển bằng tiếng Việt.")
-    add_bullet(doc, "Bảng đo: MQTT MANUAL/AUTO ổn định; giọng nói ~93% đúng / ~1,62 s TB ở 1 m tạp âm thấp (điều kiện thí nghiệm).")
-    add_bullet(doc, "Bộ hồ sơ KHKT/STEM: PL IA–VII, báo cáo kỹ thuật, báo cáo STEM, kế hoạch này, poster PDF.")
+    section_banner("VI. BÁO CÁO KẾT QUẢ TÓM TẮT (không quá 300 từ)")
+    add_p(
+        doc,
+        "Nhóm đã hoàn thành nguyên mẫu nhà thông minh Face AIoT tích hợp trợ lý AI Xiaozhi và kiểm chứng trên mô hình bàn thí nghiệm. "
+        "Hai kênh điều khiển bổ sung nhau: (1) ứng dụng di động nhận diện khuôn mặt realtime bằng NCNN trên thiết bị, so khớp 1:N và gửi MQTT mở cửa khi đạt ngưỡng tin cậy; "
+        "(2) Xiaozhi trên ESP32-S3 hiểu lệnh tiếng Việt qua STT/LLM/TTS và MCP, điều khiển đèn–quạt–cửa/rèm, đọc cảm biến môi trường. "
+        "Node ESP đọc DHT11, MQ gas, LDR/lửa; hỗ trợ chế độ MANUAL và AUTO theo rule cảm biến, cảnh báo gas; nguồn điều khiển thấp áp, tải 220 V qua rơ-le cách ly. "
+        "Kết quả thử nghiệm chính: MQTT MANUAL/AUTO phản hồi đúng trên thiết bị thật; nhận diện mở cửa hoạt động kèm cooldown; "
+        "ở khoảng cách 1 m và tạp âm thấp, tỷ lệ thực thi lệnh giọng nói khoảng 93,3% với độ trễ trung bình khoảng 1,62 giây (hướng tới dưới 2 giây); "
+        "ở 3 m hoặc tạp âm cao tỷ lệ giảm (khoảng 70% / 60%); kịch bản ngữ cảnh đạt khoảng 80–90% tùy độ phức tạp. "
+        "Sản phẩm phù hợp trình diễn STEM, không phụ thuộc chìa khóa vật lý, Xiaozhi ưu tiên riêng tư hơn camera cố định. "
+        "Hướng tiếp theo: chống spoofing khuôn mặt, nhật ký ra vào, khóa điện từ và cải thiện STT trong môi trường ồn.",
+    )
+    add_p(
+        doc,
+        "(Đoạn tóm tắt trên ≤ 300 từ; chi tiết số liệu xem báo cáo STEM / Phụ lục III kỹ thuật và nhật ký Phụ lục V.)",
+        italic=True,
+        size=11,
+        first_line=False,
+        space_after=6,
+    )
     add_image(
         doc,
         local.get("ui_dieu_khien_nha.png"),
@@ -1384,7 +1400,7 @@ DANH MỤC FILE TRONG FOLDER (đã điền nội dung kỹ thuật; để trốn
 09_BAO_CAO_STEM_Face_AIoT_Xiaozhi.docx       → Báo cáo STEM đầy đủ (Face + Xiaozhi)
 09b_...mau_cu.docx / 09c_...Xiaozhi.docx     → Bản tham chiếu gốc trong repo
 10_PL_VII_Huong_dan_poster_mau_Bo.docx       → Hướng dẫn poster Bộ
-11_KE_HOACH_NGHIEN_CUU_Face_AIoT_Xiaozhi.docx → Kế hoạch nghiên cứu (mục tiêu–tiến độ–kết quả dự kiến)
+11_KE_HOACH_NGHIEN_CUU_Face_AIoT_Xiaozhi.docx → Kế hoạch nghiên cứu (có Mục VI báo kết quả tóm tắt ≤300 từ)
 anh_minh_hoa/                                → Ảnh dùng trong báo cáo/poster
 
 VIỆC KHÁCH / GVHD CẦN ĐIỀN TRƯỚC KHI NỘP:

@@ -39,9 +39,23 @@ TEN_DU_AN = (
     "Nhà thông minh tích hợp nhận diện khuôn mặt và "
     "điều khiển IoT qua ứng dụng di động (Face AIoT)"
 )
+TEN_DU_AN_BIA = (
+    "NHÀ THÔNG MINH TÍCH HỢP NHẬN DIỆN KHUÔN MẶT\n"
+    "VÀ ĐIỀU KHIỂN IoT QUA ỨNG DỤNG DI ĐỘNG\n"
+    "(Face AIoT)"
+)
 TEN_NGAN = "Nhà thông minh Face AIoT"
 LINH_VUC = "Hệ thống nhúng và Phần mềm hệ thống / Khoa học máy tính – IoT – Trí tuệ nhân tạo"
+LINH_VUC_BIA = "Khoa học máy tính — IoT — Trí tuệ nhân tạo ứng dụng"
 LOAI = "Dự án kỹ thuật (STEM)"
+SO_GDDT = "SỞ GIÁO DỤC VÀ ĐÀO TẠO TỈNH NINH BÌNH"
+TRUONG = "TRƯỜNG THPT A NGUYỄN KHUYẾN"
+DIA_DIEM = "Tỉnh Ninh Bình"
+NAM_HOC = "2025 – 2026 / Dự thi 2026 – 2027"
+# Theo danh sách kèm Quyết định cử SP dự thi cấp tỉnh
+HS1_TEN, HS1_LOP = "Nguyễn Tuấn Anh", "12A1"
+HS2_TEN, HS2_LOP = "Lê Chí Quốc", "11A1"
+GVHD = "Nguyễn Thị Viên"
 NAVY = RGBColor(0x1F, 0x4E, 0x79)
 
 
@@ -215,10 +229,10 @@ def build_pl1():
         first_line=False,
         space_after=8,
     )
-    add_p(doc, "ĐƠN VỊ DỰ THI: ……………………………", bold=True, first_line=False)
+    add_p(doc, f"ĐƠN VỊ DỰ THI: {TRUONG}", bold=True, first_line=False)
     add_p(doc, "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", align="center", bold=True, first_line=False, space_after=0)
     add_p(doc, "Độc lập – Tự do – Hạnh phúc", align="center", bold=True, italic=True, first_line=False, space_after=0)
-    add_p(doc, "………………, ngày …… tháng …… năm 2026", align="right", first_line=False, space_after=8)
+    add_p(doc, "Bình Sơn, ngày …… tháng 11 năm 2026", align="right", first_line=False, space_after=8)
 
     add_p(doc, "BẢN ĐĂNG KÝ DỰ THI", align="center", bold=True, size=14, first_line=False)
     add_p(
@@ -255,29 +269,29 @@ def build_pl1():
                 "1",
                 TEN_NGAN,
                 "Hệ thống nhúng /\nCNTT–AI",
-                "………………",
+                HS1_TEN,
                 "…/…/…",
                 "……",
+                HS1_LOP,
+                "THPT A Nguyễn Khuyến",
                 "……",
-                "………………",
                 "……",
-                "……",
-                "………………",
-                "………………",
+                GVHD,
+                "THPT A Nguyễn Khuyến",
             ],
             [
                 "2",
-                "(thành viên nếu có)",
-                "",
-                "………………",
+                TEN_NGAN,
+                "Hệ thống nhúng /\nCNTT–AI",
+                HS2_TEN,
                 "…/…/…",
                 "……",
+                HS2_LOP,
+                "THPT A Nguyễn Khuyến",
                 "……",
-                "………………",
                 "……",
-                "……",
-                "",
-                "",
+                GVHD,
+                "THPT A Nguyễn Khuyến",
             ],
         ],
     )
@@ -292,7 +306,8 @@ def build_pl1():
         doc,
         ["TT", "Tên dự án", "Lĩnh vực", "Họ tên HS", "Ngày sinh", "Dân tộc", "Lớp", "Trường", "Họ tên GVHD", "Đơn vị"],
         [
-            ["1", TEN_NGAN, "STEM – IoT/AI", "………………", "…/…/…", "……", "……", "………………", "………………", "………………"],
+            ["1", TEN_NGAN, "STEM – IoT/AI", HS1_TEN, "…/…/…", "……", HS1_LOP, "THPT A Nguyễn Khuyến", GVHD, "THPT A Nguyễn Khuyến"],
+            ["2", TEN_NGAN, "STEM – IoT/AI", HS2_TEN, "…/…/…", "……", HS2_LOP, "THPT A Nguyễn Khuyến", GVHD, "THPT A Nguyễn Khuyến"],
         ],
     )
     add_p(doc, "Thủ trưởng đơn vị dự thi", align="center", bold=True, first_line=False, space_before=12)
@@ -412,26 +427,38 @@ def build_pl3(local: dict[str, Path]):
         "Nhu cầu điều khiển thiết bị trong nhà một cách tiện lợi, an toàn và thân thiện ngày càng tăng. "
         "Nhiều giải pháp thương mại đắt, phụ thuộc ứng dụng điện thoại hoặc trợ lý giọng nói nước ngoài "
         "hiểu tiếng Việt hạn chế. Khóa cơ học dễ mất chìa; camera cố định trong nhà đặt ra lo ngại riêng tư. "
-        "Hộ gia đình dùng bếp gas cần cảnh báo sớm khi nồng độ khí tăng.",
+        "Hộ gia đình dùng bếp gas cần cảnh báo sớm khi nồng độ khí tăng. Với học sinh trung học, đây vừa là "
+        "vấn đề đời sống vừa là cơ hội để học IoT–AI bằng một nguyên mẫu có thể chế tạo và đo đạc được.",
     )
     add_p(
         doc,
         "Vấn đề cần giải quyết: thiết kế và kiểm chứng mô hình nhà thông minh chi phí hợp lý cho học sinh STEM, "
         "vừa mở cửa bằng nhận diện khuôn mặt trên điện thoại (Face AIoT), vừa điều khiển bằng giọng nói tiếng Việt "
-        "tự nhiên qua trợ lý AI Xiaozhi trên ESP32-S3, kết nối MQTT tới đèn, quạt, cửa/rèm và cảm biến môi trường.",
+        "tự nhiên qua trợ lý AI Xiaozhi trên ESP32-S3, kết nối MQTT tới đèn, quạt, cửa/rèm và cảm biến môi trường. "
+        "Tên dự án đăng ký dự thi cấp tỉnh theo Quyết định của nhà trường: "
+        f"{TEN_DU_AN}.",
+    )
+    add_p(
+        doc,
+        "Nếu chỉ dùng app thì người dùng vẫn phải cầm điện thoại mỗi lần thao tác. Nếu chỉ dùng camera cố định "
+        "thì chi phí và mức riêng tư kém hấp dẫn hơn. Do đó nhóm đặt mục tiêu kiểm chứng một mô hình kết hợp: "
+        "nhận diện trên máy của người dùng + điều khiển IoT + kênh giọng nói tiếng Việt, có số liệu rõ ràng.",
     )
     add_p(doc, "Tiêu chí giải pháp:", bold=True, first_line=False)
     add_bullet(doc, "Hiểu và thực thi câu lệnh tiếng Việt linh hoạt; mở cửa khi nhận diện đạt ngưỡng tin cậy.")
     add_bullet(doc, "Độ trễ phản hồi giọng nói hướng tới dưới 2 giây ở điều kiện chuẩn (1 m, tạp âm thấp).")
     add_bullet(doc, "Xiaozhi không dùng camera; phần Face AIoT chỉ xử lý khuôn mặt khi người dùng chủ động mở app.")
     add_bullet(doc, "Nguồn điều khiển thấp áp 5 V; tải 220 V qua rơ-le cách ly; chi phí thấp hơn Raspberry Pi + camera.")
+    add_bullet(doc, "Có bảng đo tỷ lệ đúng / độ trễ và giải thích được hạn chế khi thuyết trình trước hội đồng.")
 
     add_h(doc, "2. Thiết kế và phương pháp nghiên cứu")
     add_p(
         doc,
         "Nhóm so sánh ba hướng: (1) chỉ điều khiển bằng app; (2) Raspberry Pi kèm camera; "
         "(3) Face AIoT trên điện thoại + Xiaozhi ESP32-S3 + node MQTT. Phương án (3) được chọn vì kết hợp "
-        "tiếng Việt tự nhiên, riêng tư tốt hơn camera cố định, và tận dụng phần cứng giá rẻ.",
+        "tiếng Việt tự nhiên, riêng tư tốt hơn camera cố định, và tận dụng phần cứng giá rẻ. "
+        "Quy trình thực hiện: khảo sát → chốt tiêu chí → sơ đồ khối → lắp mô hình → lập trình firmware/app/bridge "
+        "→ thử vòng kín → hiệu chỉnh ngưỡng (gas, nhiệt, cosine, STT) → hoàn thiện hồ sơ.",
     )
     add_table(
         doc,
@@ -461,13 +488,21 @@ def build_pl3(local: dict[str, Path]):
         doc,
         "Chế tạo: lắp mô hình gỗ/bàn thí nghiệm; nạp firmware node phòng khách/bếp và phòng ngủ; "
         "cấu hình Wi-Fi, MQTT; đăng ký khuôn mặt trên app; thiết lập kịch bản ngữ cảnh Xiaozhi "
-        "(ví dụ “Tôi đi ngủ” → tắt đèn, bật quạt).",
+        "(ví dụ “Tôi đi ngủ” → tắt đèn, bật quạt). Trong quá trình làm, nhóm ghi nhật ký các lỗi kỹ thuật "
+        "(đảo dây rơ-le, buffer MQTT cắt JSON rule, ngưỡng gas cần hiệu chỉnh) và cách xử lý — "
+        "đây là minh chứng quá trình nghiên cứu chứ không chỉ kết quả cuối.",
     )
     add_p(doc, "Luồng kiểm thử chính:", bold=True, first_line=False)
     add_bullet(doc, "MANUAL/AUTO: bật tắt đèn–quạt–cửa; AUTO theo LDR/nhiệt/gas.")
     add_bullet(doc, "Nhận diện khuôn mặt realtime → MQTT mở cửa khi cosine ≥ ngưỡng (mặc định 0,45).")
     add_bullet(doc, "Giọng nói: đo tỷ lệ thực thi đúng theo khoảng cách 1–3 m và ba mức tạp âm; đo độ trễ.")
     add_bullet(doc, "Kịch bản ngữ cảnh nhiều công cụ; đối chiếu OLED/app với trạng thái thiết bị thật.")
+    add_p(
+        doc,
+        "Mỗi ô số liệu được lặp lại nhiều lần trong cùng điều kiện để giảm sai số ngẫu nhiên. "
+        "Khi thuyết trình, nhóm ưu tiên giải thích “vì sao sai” (ồn, xa mic, thiếu sáng, chưa đủ mẫu mặt) "
+        "song song với tỷ lệ thành công — phù hợp tiêu chí đánh giá dự án kỹ thuật cấp trung học.",
+    )
 
     add_image(
         doc,
@@ -511,8 +546,15 @@ def build_pl3(local: dict[str, Path]):
         doc,
         "Kết luận: nguyên mẫu chứng minh tính khả thi của nhà thông minh AIoT kết hợp nhận diện khuôn mặt "
         "và trợ lý giọng nói tiếng Việt, đạt tiêu chí riêng tư–an toàn điện–chi phí phù hợp STEM. "
-        "Hướng phát triển: chống giả mạo ảnh; nhật ký ra vào; khóa điện từ; cải thiện STT ở xa/ồn; "
-        "đóng gói bộ kit kèm giáo án thực hành.",
+        "Số liệu cho thấy kênh MQTT/rule AUTO ổn định; kênh giọng nói tốt nhất ở cự ly gần và môi trường ồn thấp; "
+        "kênh nhận diện phụ thuộc chất lượng mẫu đăng ký và điều kiện ánh sáng. Nhóm nêu rõ hạn chế thay vì "
+        "khẳng định tuyệt đối — phù hợp yêu cầu trung thực của báo cáo dự án kỹ thuật.",
+    )
+    add_p(
+        doc,
+        "Khả năng ứng dụng: học cụ IoT–AI tại trường; demo mở cửa không chìa; cảnh báo gas trên mô hình bếp; "
+        "trải nghiệm điều khiển tiếng Việt. Hướng phát triển: chống giả mạo ảnh; nhật ký ra vào; khóa điện từ; "
+        "cải thiện STT ở xa/ồn; đóng gói bộ kit kèm giáo án thực hành cho câu lạc bộ STEM.",
     )
     add_p(doc, "Tài liệu tham khảo (tóm tắt)", bold=True, first_line=False, space_before=8)
     for r in [
@@ -995,16 +1037,20 @@ def build_bao_cao_stem(local: dict[str, Path]):
         run = p.add_run(f"{TEN_NGAN}  ·  Hồ sơ STEM/KHKT 2026–2027")
         set_run_font(run, size=10, italic=True, color=NAVY)
 
+    # Bìa theo format mẫu Ninh Bình (09b) + thông tin QĐ cử SP
+    add_p(doc, SO_GDDT, align="center", bold=True, first_line=False, size=14)
+    add_p(doc, TRUONG, align="center", bold=True, first_line=False, size=13, space_after=12)
     add_p(doc, "CUỘC THI KHOA HỌC KỸ THUẬT / STEM DÀNH CHO HỌC SINH", align="center", bold=True, first_line=False, size=13)
-    add_p(doc, "BÁO CÁO DỰ ÁN STEM", align="center", bold=True, size=18, first_line=False, color=NAVY, space_before=12)
-    add_p(doc, TEN_DU_AN, align="center", bold=True, size=14, first_line=False, space_before=10, space_after=12)
-    add_p(doc, f"Lĩnh vực: {LINH_VUC}", align="center", italic=True, size=12, first_line=False)
-    add_p(doc, "Năm học: 2025 – 2026 / Dự thi 2026 – 2027", align="center", size=12, first_line=False, space_after=16)
-    add_p(doc, "Thông tin nhóm dự án (điền đầy đủ khi nộp):", bold=True, first_line=False)
+    add_p(doc, "BÁO CÁO DỰ ÁN STEM", align="center", bold=True, size=18, first_line=False, color=NAVY, space_before=12, space_after=6)
+    add_p(doc, TEN_DU_AN_BIA, align="center", bold=True, size=15, first_line=False, space_before=10, space_after=16)
+    add_p(doc, f"Lĩnh vực: {LINH_VUC_BIA}", align="center", italic=True, size=12, first_line=False)
+    add_p(doc, f"Địa điểm: {DIA_DIEM}", align="center", size=12, first_line=False)
+    add_p(doc, f"Năm học: {NAM_HOC}", align="center", size=12, first_line=False, space_after=16)
+    add_p(doc, "Thông tin nhóm dự án:", bold=True, first_line=False)
     for line in [
-        "• Họ và tên học sinh: ................................................................",
-        "• Lớp / Trường: ...........................................................................",
-        "• Giáo viên hướng dẫn: ...................................................................",
+        f"• Họ và tên học sinh: {HS1_TEN} ({HS1_LOP}); {HS2_TEN} ({HS2_LOP})",
+        f"• Lớp / Trường: {HS1_LOP}, {HS2_LOP} / THPT A Nguyễn Khuyến",
+        f"• Giáo viên hướng dẫn: {GVHD}",
         "• Số điện thoại liên hệ: .................................................................",
     ]:
         add_p(doc, line, first_line=False, size=12, space_after=2)
@@ -1031,44 +1077,137 @@ def build_bao_cao_stem(local: dict[str, Path]):
     add_h(doc, "I. TÓM TẮT DỰ ÁN", size=14)
     add_p(
         doc,
-        "Dự án xây dựng mô hình nhà thông minh AIoT gồm hai kênh điều khiển bổ sung nhau: "
-        "(1) ứng dụng Face AIoT trên điện thoại đăng ký/nhận diện khuôn mặt realtime bằng NCNN, "
-        "so khớp 1:N và gửi MQTT mở cửa; (2) trợ lý AI Xiaozhi trên ESP32-S3 hiểu lệnh tiếng Việt "
-        "qua STT/LLM/TTS và MCP, điều khiển đèn–quạt–cửa/rèm, đọc cảm biến. Node ESP đọc DHT11, "
-        "MQ gas, LDR/lửa; hỗ trợ MANUAL/AUTO. Sản phẩm phù hợp STEM: Khoa học–Công nghệ–Kỹ thuật–Toán.",
+        "Dự án xây dựng và kiểm chứng mô hình nhà thông minh quy mô bàn thí nghiệm, nhằm giải quyết "
+        "đồng thời hai nhu cầu thường gặp trong đời sống học đường và gia đình: mở cửa an toàn bằng "
+        "nhận diện khuôn mặt và điều khiển thiết bị bằng giọng nói tiếng Việt hoặc bằng ứng dụng điện thoại. "
+        "Sản phẩm mang tên Face AIoT theo Quyết định cử dự án dự thi cấp tỉnh của Trường THPT A Nguyễn Khuyến.",
+    )
+    add_p(
+        doc,
+        "Hệ thống gồm hai kênh điều khiển bổ sung nhau. Kênh thứ nhất là ứng dụng di động Face AIoT: "
+        "học sinh đăng ký khuôn mặt thành viên, nhận diện realtime trên chính điện thoại (thư viện NCNN), "
+        "so khớp 1:N theo khoảng cách cosine và gửi lệnh MQTT để quay servo mở cửa khi đạt ngưỡng tin cậy. "
+        "Kênh thứ hai là trợ lý AI Xiaozhi trên board ESP32-S3: thu giọng nói, chuyển thành văn bản (STT), "
+        "hiểu ý định bằng mô hình ngôn ngữ (LLM), gọi công cụ MCP rồi phát bản tin MQTT tới đèn, quạt, cửa/rèm "
+        "và đọc cảm biến; kết quả được phản hồi bằng giọng nói (TTS).",
+    )
+    add_p(
+        doc,
+        "Phía thiết bị biên, các node ESP32/ESP8266 đọc DHT11 (nhiệt–ẩm), MQ gas, LDR/cảm biến lửa; "
+        "điều khiển rơ-le và servo; hỗ trợ chế độ MANUAL (bấm trên app) và AUTO (rule theo cảm biến). "
+        "Broker MQTT WSS là “trạm trung chuyển” realtime giữa app, Xiaozhi và firmware. "
+        "Qua thử nghiệm, nhóm ghi nhận MQTT và rule AUTO hoạt động ổn định; mở cửa bằng mặt có cooldown; "
+        "ở khoảng cách 1 m và tạp âm thấp, tỷ lệ thực thi lệnh giọng nói khoảng 93,3% với độ trễ trung bình "
+        "khoảng 1,62 giây. Dự án gắn với đủ bốn trụ cột STEM và phù hợp trình diễn trước hội đồng KHKT.",
     )
 
     add_h(doc, "II. LÝ DO CHỌN ĐỀ TÀI", size=14)
     add_p(
         doc,
-        "An ninh nhà ở, tiện nghi điều khiển và cảnh báo gas là nhu cầu thực tế. Giải pháp thương mại "
-        "thường đắt hoặc hỗ trợ tiếng Việt hạn chế. Kết hợp Face AIoT với Xiaozhi giúp học sinh thực hành "
-        "IoT, AI nhẹ trên di động, LLM và an toàn điện trong một đề tài thống nhất.",
+        "An ninh nhà ở và tiện nghi điều khiển thiết bị là vấn đề rất gần với học sinh. Nhiều gia đình "
+        "muốn mở cửa mà không phụ thuộc hoàn toàn vào chìa khóa vật lý; muốn bật đèn–quạt hoặc hỏi nhiệt độ "
+        "mà không phải mở nhiều ứng dụng khác nhau. Các giải pháp thương mại thường có giá cao, khóa hệ sinh thái, "
+        "hoặc hỗ trợ tiếng Việt còn hạn chế. Trong khi đó, học sinh trung học hoàn toàn có thể tiếp cận linh kiện "
+        "ESP, cảm biến giá rẻ và lập trình app/firmware nếu được hướng dẫn đúng quy trình kỹ thuật.",
+    )
+    add_p(
+        doc,
+        "Nhóm chọn đề tài vì thấy rõ “bài toán thật”: (1) làm sao nhận diện người đã đăng ký để mở cửa "
+        "mà vẫn tôn trọng quyền riêng tư (không bắt buộc lắp camera cố định trong nhà); "
+        "(2) làm sao điều khiển bằng tiếng Việt tự nhiên; (3) làm sao cảnh báo khí gas và tự động hóa "
+        "theo rule đơn giản, dễ giải thích trước giám khảo. Face AIoT đặt nhận diện trên điện thoại của người dùng, "
+        "còn Xiaozhi không dùng camera — hai hướng này bổ sung nhau về tiện nghi và mức riêng tư.",
+    )
+    add_p(
+        doc,
+        "Về học thuật, đề tài giúp nhóm thực hành liên ngành đúng tinh thần STEM và cuộc thi KHKT: "
+        "Vật lý/cảm biến (nhiệt, ánh sáng, khí gas), Toán (vector embedding, cosine similarity, đo độ trễ), "
+        "Công nghệ thông tin (MQTT, Wi-Fi, API), Kỹ thuật (mạch rơ-le cách ly 220 V, servo, firmware). "
+        "Đó là lý do nhóm thống nhất đầu tư một nguyên mẫu có thể lắp, đo và trình diễn được, "
+        "không chỉ dừng ở ý tưởng trên giấy.",
     )
 
     add_h(doc, "III. MỤC TIÊU NGHIÊN CỨU", size=14)
-    add_bullet(doc, "Xây dựng mô hình nhà thông minh điều khiển qua MQTT từ app và từ Xiaozhi.")
-    add_bullet(doc, "Tích hợp nhận diện khuôn mặt realtime; mở cửa khi đạt ngưỡng confidence.")
-    add_bullet(doc, "Thiết lập lệnh/kịch bản tiếng Việt; đo tỷ lệ đúng và độ trễ theo khoảng cách–tạp âm.")
-    add_bullet(doc, "Hỗ trợ MANUAL/AUTO theo rule cảm biến; cảnh báo gas.")
-    add_bullet(doc, "Đánh giá ổn định kết nối, an toàn điện và khả năng trình diễn STEM.")
+    add_p(
+        doc,
+        "Mục tiêu chung: thiết kế, chế tạo và kiểm chứng mô hình nhà thông minh Face AIoT "
+        "tích hợp nhận diện khuôn mặt trên ứng dụng di động và điều khiển IoT (kèm kênh giọng nói tiếng Việt "
+        "qua Xiaozhi), đạt độ ổn định đủ để trình diễn và có số liệu thí nghiệm rõ ràng.",
+    )
+    add_p(doc, "Mục tiêu cụ thể:", bold=True, first_line=False)
+    add_bullet(doc, "Xây dựng mô hình vật lý và sơ đồ khối: cảm biến – node ESP – broker MQTT – app – Xiaozhi.")
+    add_bullet(doc, "Lập trình firmware hỗ trợ MANUAL/AUTO, OLED trạng thái, cảnh báo gas, điều khiển đèn–quạt–cửa.")
+    add_bullet(doc, "Hoàn thiện app Face AIoT: đăng nhập, đăng ký nhiều mẫu mặt, unlock realtime, điều khiển nhà.")
+    add_bullet(doc, "Kết nối Xiaozhi (STT/LLM/TTS + MCP→MQTT); thử lệnh đơn và kịch bản ngữ cảnh tiếng Việt.")
+    add_bullet(doc, "Đo tỷ lệ thực thi đúng và độ trễ theo khoảng cách nói và mức tạp âm; ghi nhận hạn chế.")
+    add_bullet(doc, "Đánh giá an toàn điện, quyền riêng tư dữ liệu khuôn mặt và khả năng dùng làm học cụ STEM.")
+    add_p(doc, "Câu hỏi nghiên cứu định hướng:", bold=True, first_line=False, space_before=4)
+    add_bullet(doc, "Làm thế nào để mở cửa bằng nhận diện khuôn mặt on-device mà vẫn điều khiển IoT qua MQTT ổn định?")
+    add_bullet(doc, "Độ chính xác và độ trễ của kênh giọng nói tiếng Việt thay đổi thế nào theo khoảng cách và tạp âm?")
+    add_bullet(doc, "Rule AUTO từ cảm biến có giúp tăng tiện nghi và an toàn (đặc biệt cảnh báo gas) hay không?")
 
     add_h(doc, "IV. ĐỐI TƯỢNG VÀ PHẠM VI", size=14)
     add_p(
         doc,
-        "Đối tượng: mô hình bàn thí nghiệm; thành viên đã đăng ký khuôn mặt; người dùng nói lệnh thử nghiệm. "
-        "Phạm vi: Face AIoT on-device + API identify; Xiaozhi cần Internet; chưa khóa điện tử công nghiệp "
-        "hay camera cố định ngoài trời. Thời gian thực hiện trong khung hồ sơ KHKT.",
+        "Đối tượng nghiên cứu là mô hình nhà thông minh quy mô bàn thí nghiệm (không phải căn hộ thương mại), "
+        "cùng hai nhóm người dùng thử nghiệm: (1) thành viên đã đăng ký khuôn mặt trong gallery của app; "
+        "(2) người nói lệnh tiếng Việt để Xiaozhi điều khiển thiết bị. Đối tượng kỹ thuật gồm firmware node, "
+        "ứng dụng Flutter, backend API/MQTT và cầu nối MCP của Xiaozhi.",
+    )
+    add_p(
+        doc,
+        "Phạm vi nội dung: nhận diện 1:N trên điện thoại; điều khiển đèn, quạt, cửa/rèm; đọc nhiệt–ẩm, gas, sáng/tối; "
+        "hai chế độ MANUAL/AUTO. Phạm vi không gồm: khóa điện từ công nghiệp, camera cố định ngoài trời, "
+        "tự host toàn bộ LLM trên máy nhà trường, hay thử nghiệm trên quy mô nhiều tầng nhà thật. "
+        "Xiaozhi cần kết nối Internet tới máy chủ AI; thử nghiệm giọng nói thực hiện trong phòng học/phòng thí nghiệm "
+        "với khoảng cách 1–3 m và ba mức tạp âm. Thời gian bám khung hồ sơ năm học 2025–2026 / dự thi 2026–2027.",
     )
 
     add_h(doc, "V. NỘI DUNG VÀ PHƯƠNG PHÁP", size=14)
     add_p(
         doc,
-        "Quy trình thiết kế kỹ thuật: khảo sát → so sánh phương án → sơ đồ khối → chế tạo → "
-        "lập trình firmware/app/Xiaozhi bridge → thử nghiệm và hiệu chỉnh ngưỡng (gas, nhiệt, cosine, STT).",
+        "Nhóm áp dụng quy trình thiết kế kỹ thuật thường dùng trong dự án STEM/KHKT: "
+        "khảo sát nhu cầu → nêu tiêu chí → so sánh phương án → thiết kế sơ đồ khối → chế tạo nguyên mẫu → "
+        "lập trình và tích hợp → thử nghiệm – hiệu chỉnh → viết báo cáo và hoàn thiện hồ sơ.",
     )
+    add_p(doc, "5.1. Nội dung nghiên cứu chính", bold=True, first_line=False)
+    add_bullet(doc, "Khảo sát các hướng nhà thông minh phổ biến và chọn phương án Face AIoT + node MQTT (+ Xiaozhi).")
+    add_bullet(doc, "Nghiên cứu cảm biến DHT11, MQ gas, LDR và cơ cấu servo; nguyên lý rơ-le cách ly tải 220 V.")
+    add_bullet(doc, "Thiết kế firmware ESP (Wi-Fi portal, MQTT WSS, OLED, rule AUTO/MANUAL).")
+    add_bullet(doc, "Xây dựng app: xác thực, đăng ký mặt, unlock realtime, giao diện điều khiển nhà.")
+    add_bullet(doc, "Tích hợp nhận diện: detect khuôn mặt + embedding MobileFaceNet + so khớp cosine.")
+    add_bullet(doc, "Cấu hình Xiaozhi và đo độ đúng / độ trễ lệnh tiếng Việt theo điều kiện thí nghiệm.")
+    add_p(doc, "5.2. Phương pháp cụ thể", bold=True, first_line=False, space_before=4)
+    add_p(
+        doc,
+        "Nghiên cứu tài liệu kỹ thuật (ESP, MQTT, NCNN, Xiaozhi) để chọn giải pháp khả thi với ngân sách học sinh. "
+        "So sánh ba phương án: chỉ điều khiển bằng app; Raspberry Pi kèm camera cố định; Face AIoT trên điện thoại "
+        "kết hợp node ESP và Xiaozhi. Phương án ba được chọn vì cân bằng chi phí, tiếng Việt, riêng tư và khả năng "
+        "trình diễn. Thực nghiệm vòng kín: che LDR → đèn; nhiệt cao → quạt; gas vượt ngưỡng → cảnh báo; "
+        "nhận diện đạt ngưỡng → mở cửa; nói lệnh → thiết bị đổi trạng thái. Số liệu được ghi bảng, "
+        "tính tỷ lệ phần trăm và giá trị trung bình độ trễ để bàn luận trước giám khảo.",
+    )
+    add_p(doc, "5.3. Tiêu chí đánh giá giải pháp", bold=True, first_line=False, space_before=4)
+    add_bullet(doc, "Điều khiển được thiết bị thật qua MQTT từ app và/hoặc Xiaozhi.")
+    add_bullet(doc, "Mở cửa khi nhận diện đạt ngưỡng; có cơ chế tránh gửi lệnh liên tục (cooldown).")
+    add_bullet(doc, "Độ trễ phản hồi giọng nói hướng tới dưới 2 giây ở điều kiện chuẩn (1 m, tạp âm thấp).")
+    add_bullet(doc, "Nguồn điều khiển thấp áp 5 V; tải 220 V đi qua rơ-le cách ly; không lộ ảnh mặt trên poster.")
 
     add_h(doc, "VI. THIẾT KẾ HỆ THỐNG", size=14)
+    add_p(
+        doc,
+        "Kiến trúc tổng thể gồm bốn tầng phối hợp. Tầng thiết bị biên: ESP đọc cảm biến và chấp hành đèn, quạt, cửa. "
+        "Tầng truyền thông: broker MQTT qua WebSocket bảo mật (WSS) chuyển lệnh cmnd/* và telemetry tele/*. "
+        "Tầng dịch vụ: API + cơ sở dữ liệu lưu tài khoản và gallery khuôn mặt; cầu nối Node.js nhận tool call từ Xiaozhi "
+        "rồi publish MQTT. Tầng tương tác người dùng: app Face AIoT trên điện thoại và board Xiaozhi (micro, loa, màn hình biểu cảm).",
+    )
+    add_p(
+        doc,
+        "Luồng mở cửa bằng khuôn mặt: camera điện thoại tạo luồng ảnh → chuyển RGBA → suy luận NCNN (detect + embedding) "
+        "→ API identify so khớp cosine với gallery → nếu accepted thì publish MQTT mở cửa → ESP quay servo và tự đóng sau "
+        "khoảng thời gian cấu hình. Luồng giọng nói: người dùng kích hoạt nghe → STT → LLM chọn tool MCP "
+        "(ví dụ bật đèn phòng khách) → bridge đổi thành topic MQTT → thiết bị phản hồi → TTS đọc kết quả.",
+    )
     add_table(
         doc,
         ["Thành phần", "Công nghệ / thiết bị", "Vai trò"],
@@ -1081,77 +1220,166 @@ def build_bao_cao_stem(local: dict[str, Path]):
             ["Kết nối", "MQTT WSS", "cmnd/* và tele/*"],
         ],
     )
+    add_p(
+        doc,
+        "Việc tách rõ các tầng giúp nhóm dễ phân công: bạn phụ trách mạch và firmware, bạn phụ trách app và nhận diện, "
+        "cùng kiểm thử vòng kín trước khi viết báo cáo. Khi một tầng lỗi (ví dụ Wi-Fi yếu), các tầng khác vẫn có thể "
+        "được kiểm tra độc lập — đây là bài học kỹ thuật quan trọng với học sinh làm dự án nhóm.",
+    )
 
     add_h(doc, "VII. PHẦN CỨNG MÔ HÌNH", size=14)
+    add_p(
+        doc,
+        "Mô hình được lắp trong hộp/khung mở mặt trước để giám khảo quan sát linh kiện khi thuyết trình. "
+        "Nguồn điều khiển dùng mức thấp áp 5 V cho logic và cảm biến; các tải đèn/quạt mô phỏng hoặc tải thật "
+        "đi qua module rơ-le có cách ly, giảm nguy cơ chạm điện khi học sinh thao tác dưới sự giám sát giáo viên. "
+        "OLED hiển thị chế độ MANUAL/AUTO và một số trạng thái cơ bản, thuận tiện đối chiếu với app.",
+    )
     add_image(
         doc,
         local.get("mo_hinh_thuc_te.png"),
         width_cm=14.5,
         caption="Hình 1. Mô hình nhà thông minh thực tế (Ảnh do học sinh tự chụp).",
     )
+    add_p(
+        doc,
+        "Bảng chân GPIO dưới đây là cấu hình điển hình của node phòng khách/bếp (mã 123) mà nhóm dùng khi thử nghiệm. "
+        "Trong quá trình làm, nhóm đã gặp và xử lý các lỗi thực tế như đảo dây rơ-le so với tên topic, "
+        "buffer MQTT quá nhỏ làm cắt JSON rule, hoặc cần chỉnh ngưỡng ADC gas cho đúng môi trường phòng thí nghiệm.",
+    )
     add_table(
         doc,
         ["Chức năng (node 123)", "GPIO", "Ghi chú"],
         [
-            ["Gas MQ-2", "34", "ADC"],
+            ["Gas MQ-2", "34", "ADC — cảnh báo khi vượt ngưỡng"],
             ["Lửa", "19", "Digital"],
-            ["DHT11", "27", "Nhiệt–ẩm"],
-            ["Rơ-le đèn/quạt", "25 / 26", "Active-LOW"],
-            ["Servo cửa / còi", "13 / 14", "PWM / GPIO"],
+            ["DHT11", "27", "Nhiệt–ẩm cho rule quạt / hiển thị"],
+            ["Rơ-le đèn/quạt", "25 / 26", "Active-LOW, cách ly tải"],
+            ["Servo cửa / còi", "13 / 14", "PWM mở–đóng cửa / cảnh báo"],
         ],
+    )
+    add_p(
+        doc,
+        "Firmware hỗ trợ phát Access Point cấu hình Wi-Fi lần đầu (thuận tiện mang đi thi), lưu rule vào bộ nhớ "
+        "không bay hơi, và duy trì kết nối MQTT để nhận lệnh cũng như gửi tele trạng thái cảm biến lên app.",
     )
 
     add_h(doc, "VIII. PHẦN MỀM VÀ AI", size=14)
+    add_p(doc, "8.1. Ứng dụng Face AIoT", bold=True, first_line=False)
     add_p(
         doc,
-        "App Face AIoT: đăng nhập API, đăng ký nhiều mẫu mặt, unlock image-stream, điều khiển MANUAL/AUTO, "
-        "cảnh báo gas (FCM trên Android). Xiaozhi: mở phiên nghe, STT, LLM chọn tool MCP, MQTT tới thiết bị, "
-        "TTS phản hồi. Topic ví dụ: cmnd/123_led1/POWER, cmnd/123_door_livingroom1/POWER, tele/123_vitals/status.",
+        "Ứng dụng viết bằng Flutter, gồm các màn hình chính: đăng nhập/đăng ký tài khoản qua API; "
+        "Điều khiển nhà (nhiệt độ, độ ẩm, gas, sáng/tối, bật tắt thiết bị, chuyển MANUAL/AUTO, chỉnh rule); "
+        "Đăng ký khuôn mặt (chụp hoặc chọn ảnh, kiểm tra có mặt trước khi lưu embedding); "
+        "Mở cửa realtime bằng luồng ảnh camera (không chỉ chụp từng tấm). Trên Android có thể bổ sung "
+        "cảnh báo đẩy khi gas vượt ngưỡng. Điểm then chốt là nhận diện chạy on-device: điện thoại tự detect "
+        "và tạo vector đặc trưng, server chỉ so khớp và quyết định accepted/rejected theo ngưỡng cosine "
+        "(mặc định khoảng 0,45 — nhóm có thể hiệu chỉnh khi thử với nhiều thành viên).",
     )
     add_image(doc, local.get("ui_dieu_khien_nha.png"), width_cm=7.0, caption="Hình 2. Điều khiển nhà (Ảnh HS tự chụp màn hình).")
     add_image(doc, local.get("ui_dang_ky_mat.png"), width_cm=8.0, caption="Hình 3. Đăng ký khuôn mặt (Ảnh HS tự chụp màn hình).")
     add_image(doc, local.get("ui_mo_cua.png"), width_cm=7.0, caption="Hình 4. Mở cửa bằng nhận diện (Ảnh HS tự chụp màn hình).")
-
-    add_h(doc, "IX. KẾT QUẢ THỰC NGHIỆM", size=14)
-    add_table(
-        doc,
-        ["Hạng mục", "Kết quả"],
-        [
-            ["MQTT MANUAL/AUTO", "Thiết bị phản hồi đúng; rule LDR/nhiệt/gas hoạt động"],
-            ["Nhận diện mở cửa", "Mở cửa khi đạt ngưỡng cosine; có cooldown"],
-            ["Giọng nói 1 m, ồn thấp", "~93,3% đúng; độ trễ TB ~1,62 s"],
-            ["Giọng nói 3 m / ồn cao", "~70% / ~60%; độ trễ tăng"],
-            ["Kịch bản ngữ cảnh", "~80–90% tùy độ phức tạp"],
-        ],
-    )
-
-    add_h(doc, "X. Ý NGHĨA STEM VÀ ỨNG DỤNG", size=14)
+    add_p(doc, "8.2. Trợ lý Xiaozhi và cầu MQTT", bold=True, first_line=False, space_before=4)
     add_p(
         doc,
-        "Dự án thể hiện đủ bốn trụ cột STEM và có thể dùng làm học cụ nhà trường, demo an ninh nhà ở/phòng lab, "
-        "cảnh báo gas hộ dùng bếp gas. Không phụ thuộc chìa khóa vật lý; Xiaozhi ưu tiên riêng tư hơn camera cố định.",
+        "Xiaozhi giúp người dùng nói tiếng Việt tự nhiên thay vì chỉ bấm nút. Sau khi kích hoạt phiên nghe, "
+        "âm thanh được đưa lên máy chủ AI để STT và LLM chọn đúng công cụ (tool) trong schema MCP đã giới hạn "
+        "(ví dụ chỉ ON/OFF đèn–quạt, mở/đóng cửa theo phòng). Cầu Node.js đổi tool call thành topic MQTT cụ thể "
+        "như cmnd/123_led1/POWER hoặc cmnd/123_door_livingroom1/POWER; trạng thái cảm biến đi theo tele/123_vitals/status. "
+        "Cách làm này vừa tận dụng sức mạnh ngôn ngữ lớn, vừa giữ an toàn vì thiết bị không nhận lệnh “tự do” ngoài schema.",
+    )
+    add_p(
+        doc,
+        "Về Toán và Tin học: vector embedding khuôn mặt được so khớp bằng cosine similarity — "
+        "hai mặt càng “gần” trong không gian đặc trưng thì giá trị cosine càng cao. "
+        "Ngưỡng quá thấp dễ nhận nhầm; ngưỡng quá cao dễ từ chối người đã đăng ký. "
+        "Đó là lý do nhóm phải thử nhiều ảnh mẫu và quan sát tỷ lệ mở cửa đúng/sai khi demo.",
+    )
+
+    add_h(doc, "IX. KẾT QUẢ THỰC NGHIỆM", size=14)
+    add_p(
+        doc,
+        "Nhóm kiểm thử trên mô hình thật trong điều kiện phòng học/phòng thí nghiệm. "
+        "Các hạng mục chính và kết quả ghi nhận như bảng dưới. Nhìn chung, kênh MQTT và rule AUTO đạt độ ổn định cao; "
+        "kênh nhận diện mở cửa hoạt động khi thành viên đã đăng ký đủ mẫu; kênh giọng nói tốt nhất ở cự ly gần và ồn thấp, "
+        "giảm dần khi nói xa hoặc môi trường ồn — đúng với dự đoán vật lý về suy hao tín hiệu và nhiễu.",
+    )
+    add_table(
+        doc,
+        ["Hạng mục", "Điều kiện / cách đo", "Kết quả ghi nhận"],
+        [
+            ["MQTT MANUAL/AUTO", "Bấm app + rule LDR/nhiệt/gas", "Thiết bị phản hồi đúng; rule hoạt động"],
+            ["Nhận diện mở cửa", "Thành viên đã đăng ký; ngưỡng cosine", "Mở cửa khi đạt ngưỡng; có cooldown"],
+            ["Giọng nói", "1 m, tạp âm thấp", "~93,3% đúng; độ trễ TB ~1,62 s"],
+            ["Giọng nói", "3 m hoặc tạp âm cao", "~70% / ~60%; độ trễ tăng"],
+            ["Kịch bản ngữ cảnh", "Câu lệnh nhiều bước (vd. đi ngủ)", "~80–90% tùy độ phức tạp"],
+        ],
+    )
+    add_p(
+        doc,
+        "Thảo luận ngắn: độ trễ giọng nói gồm nhiều khâu (thu âm, mạng, STT, LLM, MQTT, chấp hành, TTS). "
+        "Khi Wi-Fi yếu hoặc tạp âm cao, STT dễ sai nên LLM chọn sai tool. Vì vậy nhóm chuẩn bị bộ câu lệnh rõ ràng "
+        "khi thuyết trình và giải thích được giới hạn của hệ thống — điều giám khảo thường đánh giá cao "
+        "hơn là tuyên bố “luôn đúng 100%”. Với nhận diện mặt, ảnh nghiêng, thiếu sáng hoặc chưa đăng ký đủ mẫu "
+        "cũng làm giảm tỷ lệ mở cửa; cooldown giúp tránh spam lệnh khi giữ mặt trước camera.",
+    )
+
+    add_h(doc, "X. Ý NGHĨA STEM VÀ KHẢ NĂNG ỨNG DỤNG", size=14)
+    add_p(
+        doc,
+        "Về Khoa học: nhóm vận dụng kiến thức cảm biến, tín hiệu và nguyên lý nhận dạng mẫu. "
+        "Về Công nghệ: sử dụng MQTT, API, NCNN, STT/LLM/TTS và quy trình Git/firmware. "
+        "Về Kỹ thuật: thiết kế mạch, chọn GPIO, cách ly rơ-le, lắp mô hình trình diễn. "
+        "Về Toán: đo đạc, tính tỷ lệ, trung bình độ trễ và cosine similarity. "
+        "Sự gắn kết này đúng tinh thần ngày hội STEM và cuộc thi KHKT dành cho học sinh trung học.",
+    )
+    add_p(
+        doc,
+        "Khả năng ứng dụng gần: học cụ nhà trường để dạy IoT–AI nhập môn; demo an ninh cửa phòng lab/câu lạc bộ; "
+        "cảnh báo gas cho mô hình bếp; trải nghiệm điều khiển tiếng Việt cho người mới. "
+        "Xiaozhi không dùng camera cố định nên phù hợp không gian cần hạn chế quay hình. "
+        "App Face AIoT chỉ xử lý mặt khi người dùng chủ động mở chức năng — nhóm nhấn mạnh điểm này khi nói về riêng tư.",
     )
 
     add_h(doc, "XI. KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN", size=14)
     add_p(
         doc,
-        "Nhóm hoàn thành nguyên mẫu nhà thông minh Face AIoT + Xiaozhi vận hành được trên mô hình thật. "
-        "Hướng tiếp: chống spoofing; nhật ký ra vào; khóa điện từ; cải thiện STT; bộ kit STEM kèm giáo án.",
+        "Nhóm đã hoàn thành nguyên mẫu nhà thông minh Face AIoT tích hợp nhận diện khuôn mặt và điều khiển IoT "
+        "(kèm kênh Xiaozhi), vận hành được trên mô hình thật với số liệu thí nghiệm cụ thể. "
+        "Mục tiêu chế tạo–kiểm chứng cơ bản đã đạt: có sản phẩm chạy được, giải thích được nguyên lý, "
+        "và nêu rõ hạn chế (khoảng cách nói, tạp âm, ánh sáng, ngưỡng nhận diện).",
+    )
+    add_p(
+        doc,
+        "Hướng phát triển tiếp theo nếu được tiếp tục sau vòng tỉnh: bổ sung chống spoofing ảnh in; "
+        "nhật ký ra vào có thời gian; thử khóa điện từ an toàn hơn servo mô hình; cải thiện STT trong môi trường ồn; "
+        "đóng gói bộ kit STEM kèm phiếu học tập cho các bạn khối dưới. "
+        "Nhóm xin cảm ơn giáo viên hướng dẫn và nhà trường đã tạo điều kiện để hoàn thiện hồ sơ dự thi.",
     )
 
     add_h(doc, "XII. TÀI LIỆU THAM KHẢO", size=14)
     for r in [
-        "1. Espressif — ESP32-S3 Technical Reference Manual / Datasheet.",
-        "2. OASIS — MQTT Version 3.1.1 / 5.0.",
-        "3. Tencent NCNN; MobileFaceNet / face embedding cosine matching.",
-        "4. XiaoZhi AI — xiaozhi-esp32 (GitHub); Anthropic MCP specification.",
-        "5. Flutter Camera / FFI documentation.",
-        "6. Datasheet DHT11, MQ-2; mã nguồn dự án face_alot và cầu nối Xiaozhi.",
+        "1. Espressif Systems — ESP32-S3 Technical Reference Manual / Datasheet.",
+        "2. OASIS — MQTT Version 3.1.1 / 5.0 Specification.",
+        "3. Tencent NCNN; MobileFaceNet / face embedding và cosine similarity.",
+        "4. Dự án mã nguồn mở XiaoZhi AI (xiaozhi-esp32); Anthropic — Model Context Protocol (MCP).",
+        "5. Flutter documentation — Camera, FFI; tài liệu cảm biến DHT11, MQ-2.",
+        "6. Công văn 7292/BGDĐT-GDPT và các phụ lục mẫu hồ sơ KHKT/STEM năm học 2026–2027.",
+        "7. Kế hoạch số 186/KH-SGDĐT ngày 14/10/2026 của Sở GDĐT Ninh Bình (triển khai KHKT/STEM cấp tỉnh).",
+        f"8. Quyết định cử dự án dự thi cấp tỉnh — {TRUONG} (danh sách kèm theo).",
     ]:
         add_p(doc, r, first_line=False, size=12, space_after=2)
 
     add_p(doc, "Xin trân trọng cảm ơn Hội đồng giám khảo!", align="center", italic=True, first_line=False, space_before=16)
-    add_p(doc, "Nhóm thực hiện (Ký và ghi rõ họ tên)", align="center", bold=True, first_line=False, space_before=12)
+    add_p(
+        doc,
+        f"Nhóm thực hiện: {HS1_TEN}, {HS2_TEN} — GVHD: {GVHD}",
+        align="center",
+        bold=True,
+        first_line=False,
+        space_before=12,
+    )
+    add_p(doc, "(Ký và ghi rõ họ tên)", align="center", italic=True, first_line=False)
 
     out = OUT / "09_BAO_CAO_STEM_Face_AIoT_Xiaozhi.docx"
     doc.save(str(out))
@@ -1183,15 +1411,15 @@ def build_ke_hoach(local: dict[str, Path]):
         shade_cell(cell, "1F4E79")
         doc.add_paragraph()
 
-    add_p(doc, "SỞ GIÁO DỤC VÀ ĐÀO TẠO ……………………………", align="center", bold=True, first_line=False, size=13)
-    add_p(doc, "TRƯỜNG ........................................", align="center", bold=True, first_line=False, size=13, space_after=8)
+    add_p(doc, SO_GDDT, align="center", bold=True, first_line=False, size=14)
+    add_p(doc, TRUONG, align="center", bold=True, first_line=False, size=13, space_after=8)
     add_p(doc, "CUỘC THI KHOA HỌC KỸ THUẬT / STEM DÀNH CHO HỌC SINH TRUNG HỌC", align="center", bold=True, first_line=False, size=13)
-    add_p(doc, "NĂM HỌC 2025 – 2026 / DỰ THI 2026 – 2027", align="center", first_line=False, size=12, space_after=10)
+    add_p(doc, f"NĂM HỌC {NAM_HOC}", align="center", first_line=False, size=12, space_after=10)
     add_p(doc, "KẾ HOẠCH NGHIÊN CỨU", align="center", bold=True, first_line=False, size=18, color=NAVY, space_before=6, space_after=10)
     add_p(doc, f"Tên đề tài: {TEN_DU_AN}", first_line=False, bold=True, size=12, space_after=4)
     add_p(doc, f"Lĩnh vực: {LINH_VUC}", first_line=False, size=12, space_after=2)
-    add_p(doc, "Học sinh: ................................................", first_line=False, size=12, space_after=2)
-    add_p(doc, "Giáo viên hướng dẫn: ................................................", first_line=False, size=12, space_after=10)
+    add_p(doc, f"Học sinh: {HS1_TEN} ({HS1_LOP}); {HS2_TEN} ({HS2_LOP})", first_line=False, size=12, space_after=2)
+    add_p(doc, f"Giáo viên hướng dẫn: {GVHD}", first_line=False, size=12, space_after=10)
 
     section_banner("I. GIỚI THIỆU VÀ TÍNH CẤP THIẾT CỦA ĐỀ TÀI")
     add_p(

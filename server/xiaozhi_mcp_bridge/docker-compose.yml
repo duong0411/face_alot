@@ -1,0 +1,14 @@
+services:
+  xiaozhi-mcp-smarthome:
+    build: .
+    image: duong0411/xiaozhi-mcp-smarthome:latest
+    container_name: xiaozhi-mcp-smarthome
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - PORT=8790
+    ports:
+      - "8790:8790"
+    # Chỉ cần outbound WSS tới api.xiaozhi.me + MQTT broker
+    # Public pull: docker pull duong0411/xiaozhi-mcp-smarthome:latest

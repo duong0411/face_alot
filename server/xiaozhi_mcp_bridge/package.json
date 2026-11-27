@@ -1,0 +1,18 @@
+{
+  "name": "xiaozhi-mcp-smarthome",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Xiaozhi MCP endpoint → MQTT SmartHome ESP32 (đèn, bơm, quạt, cửa, ẩm, mực nước)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.3",
+    "ws": "^8.18.0"
+  }
+}

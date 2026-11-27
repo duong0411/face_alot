@@ -948,7 +948,7 @@ class _AutoRules extends StatelessWidget {
               ),
         ),
         const SizedBox(height: 10),
-        SoftCard(
+        SoftPanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

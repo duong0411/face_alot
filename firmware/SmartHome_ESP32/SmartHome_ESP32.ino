@@ -196,7 +196,7 @@ bool buzzerPhase = false;
 bool lastGasForBuzz = false;
 bool lastEmptyForBuzz = false;
 unsigned long lastBuzzerChirpAt = 0;
-unsigned long emptyBuzzUntil = 0;  // millis deadline — AUTO hết nước buzz liên tục
+unsigned long emptyBuzzUntil = 0;  // millis deadline — AUTO hết nước buzz 5s
 
 void saveRules();
 void loadRules();
@@ -325,8 +325,8 @@ void buzzerWrite(bool on) {
 
 /**
  * Coi (bit-bang, khong LEDC):
- *  - Gas/CO2: keu khi vua phat hien + lap moi cooldown (ca MANUAL/AUTO)
- *  - Het nuoc (HC-SR04) o AUTO: keu lien tuc 5s (edge), khong lap khi van het
+ *  - Gas/CO2: kêu liên tục khi còn cảnh báo (MANUAL/AUTO)
+ *  - Het nuoc (HC-SR04) o AUTO: vừa hết → kêu liên tục 5s
  *  - Chi im khi cua dang quay (bao ve SG90)
  */
 void updateBuzzer() {
@@ -341,24 +341,14 @@ void updateBuzzer() {
   lastGasForBuzz = gasAlertBz;
   lastEmptyForBuzz = emptyAlert;
 
+  if (gasEdge) {
+    lastBuzzerChirpAt = now;
+    Serial.println(F("BUZZ gas/CO2 continuous"));
+  }
   if (emptyEdge) {
     emptyBuzzUntil = now + BUZZER_EMPTY_HOLD_MS;
     lastBuzzerChirpAt = now;
     Serial.println(F("BUZZ water EMPTY 5s (HC-SR04 AUTO)"));
-  }
-
-  // AUTO hết nước: kêu liên tục đến hết cửa sổ 5s (burst ngắn mỗi vòng loop)
-  if (emptyBuzzUntil != 0) {
-    if ((long)(now - emptyBuzzUntil) >= 0) {
-      emptyBuzzUntil = 0;
-      buzzerOff();
-    } else if (doorBusy) {
-      buzzerOff();
-      return;
-    } else {
-      beep(40);
-      return;  // ưu tiên báo hết nước trong 5s
-    }
   }
 
   if (doorBusy) {
@@ -366,19 +356,23 @@ void updateBuzzer() {
     return;
   }
 
-  bool cooled = (lastBuzzerChirpAt == 0) ||
-                ((now - lastBuzzerChirpAt) >= BUZZER_COOLDOWN_MS);
-  bool gasRepeat = gasAlertBz && cooled && !gasEdge;
+  // Gas: kêu liên tục khi còn cảnh báo
+  if (gasAlertBz) {
+    beep(40);
+    return;
+  }
 
-  if (!gasEdge && !gasRepeat) return;
-  if (!cooled && !gasEdge) return;
+  // AUTO hết nước: kêu liên tục trong 5s sau cạnh lên
+  if (emptyBuzzUntil != 0) {
+    if ((long)(now - emptyBuzzUntil) >= 0) {
+      emptyBuzzUntil = 0;
+      buzzerOff();
+    } else {
+      beep(40);
+    }
+    return;
+  }
 
-  // CO2/gas: 2 chirp
-  beep(BUZZER_CHIRP_MS);
-  delay(BUZZER_GAP_MS);
-  beep(BUZZER_CHIRP_MS);
-  Serial.println(F("BUZZ gas/CO2"));
-  lastBuzzerChirpAt = millis();
   buzzerOff();
 }
 

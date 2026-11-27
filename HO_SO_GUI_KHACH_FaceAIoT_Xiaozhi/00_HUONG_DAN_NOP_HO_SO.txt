@@ -1,0 +1,40 @@
+HƯỚNG DẪN HỒ SƠ GỬI KHÁCH — FACE AIOT + NHÀ THÔNG MINH AI XIAOZHI
+================================================================
+Theo phụ lục Công văn 7292/BGDĐT-GDPT và mẫu báo cáo STEM trong docs/
+
+Tên dự án:
+Nhà thông minh Face AIoT tích hợp nhận diện khuôn mặt và trợ lý giọng nói tiếng Việt AI Xiaozhi (ESP32-S3)
+
+Lĩnh vực: Hệ thống nhúng và Phần mềm hệ thống / Khoa học máy tính – IoT – Trí tuệ nhân tạo
+
+DANH MỤC FILE TRONG FOLDER (đã điền nội dung kỹ thuật; để trống thông tin HS/trường để khách điền):
+------------------------------------------------------------------------------------------------
+00_HUONG_DAN_NOP_HO_SO.txt
+00b_CV_7292_BGDĐT_GDPT_Thi_KHKT.pdf          → Công văn gốc (tham chiếu)
+
+01_PL_IA_B_Dang_ky_du_thi.docx               → Đăng ký dự thi KHKT + STEM (đã điền tên dự án)
+02_PL_II_Thuyet_minh_don_vi.docx             → Thuyết minh đơn vị (trường điền số liệu + ký)
+03_PL3_Bao_cao_ket_qua_du_an_ky_thuat.docx   → Báo cáo kết quả dự án KỸ THUẬT (≤15 trang, không tên HS/trường)
+04_PL_IV_Tieu_chi_STEM_tu_doi_chieu.docx     → Tự đối chiếu tiêu chí STEM
+04b_PL_IV_Tieu_chi_STEM_mau_Bo.docx          → Mẫu tiêu chí Bộ (nếu có)
+05_PL_IV_2027_Phieu_hoc_sinh_IVa_d.docx      → Phiếu IVa–IVd (đã điền tên dự án + gợi ý rủi ro/IVd mặt)
+05b_PL_IV_2027_mau_trang_Bo.docx             → Mẫu trống Bộ
+06_PL_V_Nhat_ky_nghien_cuu.docx              → Nhật ký + minh chứng (đã có tiến độ mẫu)
+06b_PL_V_2027_mau_trang_Bo.docx              → Mẫu trống Bộ
+07_PL7_Phieu_khai_bao_cong_nghe_so_AI.docx   → Kê khai công nghệ số / AI
+08_PL8_Poster_dien_tu_04_trang.pdf           → Poster điện tử 04 trang (không tên HS/trường)
+09_BAO_CAO_STEM_Face_AIoT_Xiaozhi.docx       → Báo cáo STEM đầy đủ (Face + Xiaozhi)
+09b_...mau_cu.docx / 09c_...Xiaozhi.docx     → Bản tham chiếu gốc trong repo
+10_PL_VII_Huong_dan_poster_mau_Bo.docx       → Hướng dẫn poster Bộ
+11_KE_HOACH_NGHIEN_CUU_Face_AIoT_Xiaozhi.docx → Kế hoạch nghiên cứu (mục tiêu–tiến độ–kết quả dự kiến)
+anh_minh_hoa/                                → Ảnh dùng trong báo cáo/poster
+
+VIỆC KHÁCH / GVHD CẦN ĐIỀN TRƯỚC KHI NỘP:
+- Họ tên HS, ĐDCN, ngày sinh, lớp, trường, KQ học tập/rèn luyện, GVHD (PL IA/B, IVa, PL V, PL7)
+- Số liệu đơn vị dự thi và chữ ký/đóng dấu (PL II)
+- Ký IVb, IVd (người đăng ký khuôn mặt / phụ huynh nếu vị thành niên)
+- Rà PL3 ≤ 15 trang; xuất PDF theo hướng dẫn Sở (nếu có)
+- Poster: chỉ dùng bản không có tên HS/trường; không QR/link
+
+Chạy lại toàn bộ:
+  python docs/tao_ho_so_face_aiot_xiaozhi.py

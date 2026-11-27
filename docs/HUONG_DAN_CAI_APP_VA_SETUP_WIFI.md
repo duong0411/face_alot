@@ -20,13 +20,57 @@ Release mới nhất: **[v1.1.7](https://github.com/duong0411/face_alot/releases
 3. Mở file APK → **Cài đặt** → mở app Face AIoT.
 4. Đăng ký / đăng nhập tài khoản.
 
-### iOS (IPA)
+### iOS (IPA) — cài bằng Sideloadly + Apple ID (iCloud)
 
-IPA bản này **chưa ký App Store** (build `--no-codesign`). Cần công cụ sideload phù hợp máy bạn (ví dụ AltStore, Sideloadly, TrollStore… tùy iOS).
+IPA bản này **chưa ký App Store** (build `--no-codesign`). Cách khuyến nghị: **Sideloadly** trên Windows/Mac, dùng **Apple ID / iCloud** miễn phí (giới hạn ~7 ngày, cần cài lại khi hết hạn).
 
-1. Cài IPA bằng công cụ sideload.
-2. Trong **Cài đặt → Tổng quan → Quản lý VPN & thiết bị** (hoặc tương đương): tin cậy chứng chỉ nhà phát triển nếu hệ thống yêu cầu.
-3. Mở app → đăng ký / đăng nhập.
+#### A. Chuẩn bị trên máy tính
+
+1. Tải **Sideloadly**: https://sideloadly.io/
+2. Cài **iTunes** (Windows: bản từ Apple, không dùng Microsoft Store) để nhận diện iPhone qua USB.
+3. Tải file IPA: [face_alot-v1.1.7-ios.ipa](https://github.com/duong0411/face_alot/releases/download/v1.1.7/face_alot-v1.1.7-ios.ipa)
+4. Cắm iPhone vào máy bằng cáp USB → trên iPhone chọn **Tin cậy máy tính này** nếu hỏi.
+
+#### B. Cài IPA bằng Sideloadly
+
+1. Mở **Sideloadly**.
+2. Kéo thả file `face_alot-v1.1.7-ios.ipa` vào cửa sổ Sideloadly (hoặc bấm chọn IPA).
+3. Ô **Apple account / Apple ID**: nhập email **iCloud / Apple ID** của bạn (tài khoản dùng để đăng nhập iPhone).
+4. Chọn đúng **thiết bị iPhone** trong danh sách (nếu có nhiều thiết bị).
+5. (Tuỳ chọn) bật **Advanced options** nếu cần — mặc định để nguyên là được với IPA unsigned.
+6. Bấm **Start** → nhập **mật khẩu Apple ID** khi Sideloadly hỏi (có thể nhận mã xác minh 2FA trên iPhone).
+7. Đợi trạng thái **Done / Success**. App Face AIoT sẽ xuất hiện trên màn hình iPhone.
+
+> Lần đầu Apple có thể gửi email “App được cài bằng tài khoản phát triển” — bình thường với sideload.
+
+#### C. Tin cậy tài khoản nhà phát triển trên iPhone (VPN & Device Management)
+
+1. Mở **Cài đặt (Settings)**.
+2. Vào **Tổng quan (General)** → **VPN & Quản lý thiết bị**  
+   (*General → VPN & Device Management* — tên có thể hơi khác theo phiên bản iOS).
+3. Trong mục **Nhà phát triển ứng dụng (Developer App)**, chọn **Apple ID** vừa dùng trên Sideloadly.
+4. Bấm **Tin cậy “Apple ID…”** → xác nhận **Tin cậy**.
+
+Không tin cậy thì mở app sẽ báo không xác minh được nhà phát triển.
+
+#### D. Bật Chế độ nhà phát triển (Developer Mode)
+
+Trên iOS 16+ (và nhiều máy mới hơn) cần bật Developer Mode mới chạy app sideload:
+
+1. **Cài đặt → Quyền riêng tư & Bảo mật (Privacy & Security)**.
+2. Kéo xuống mục **Chế độ nhà phát triển (Developer Mode)** → **Bật**.
+3. Máy yêu cầu **Khởi động lại** → khởi động lại iPhone.
+4. Sau khi mở lại: xác nhận **Bật** Developer Mode (có thể hỏi Face ID / mật mã).
+
+Rồi mở app Face AIoT → đăng ký / đăng nhập.
+
+#### E. Ghi nhớ sau khi cài
+
+| Việc | Chi tiết |
+|------|----------|
+| Hạn chứng chỉ free | Apple ID miễn phí ~**7 ngày** — hết hạn app không mở được → cắm USB, Sideloadly **Start** lại cùng Apple ID |
+| Đổi Apple ID | Cần xóa app cũ / tin cậy tài khoản mới trong VPN & Device Management |
+| Không cần App Store | App không cập nhật qua App Store; tải IPA mới từ GitHub Release rồi Sideloadly lại |
 
 ---
 
@@ -135,7 +179,9 @@ wss://mqtt.duynguyen.io.vn/mqtt
 | Vào `192.168.4.1` không được | Đang dính 4G — tắt dữ liệu di động; thử trình duyệt khác |
 | Portal báo fail khi Kết nối | Sai mật khẩu WiFi; WiFi 5 GHz-only (ưu tiên băng 2.4 GHz); đứng gần router |
 | App không kết nối nhà | Kiểm tra Chip ID `esp32`; ESP32 đã có WiFi + MQTT; thử mở lại app / kết nối lại |
-| iOS không mở được IPA | Cần sideload + tin cậy chứng chỉ; IPA không cài trực tiếp như App Store |
+| iOS không mở được IPA | Cài bằng **Sideloadly** + Apple ID; **Tin cậy** tài khoản trong *VPN & Quản lý thiết bị*; bật **Developer Mode** rồi khởi động lại |
+| App iOS báo hết hạn / không xác minh | Sideloadly cài lại cùng Apple ID (chứng chỉ free ~7 ngày) |
+| Sideloadly không thấy iPhone | Cài iTunes (bản Apple), cáp USB tốt, trên iPhone bấm Tin cậy máy tính |
 | Android chặn APK | Bật “Cài từ nguồn không xác định” cho File / Chrome |
 
 ---

@@ -21,12 +21,15 @@ DANH MỤC FILE TRONG FOLDER (đã điền nội dung kỹ thuật; để trốn
 05b_PL_IV_2027_mau_trang_Bo.docx             → Mẫu trống Bộ
 06_PL_V_Nhat_ky_nghien_cuu.docx              → Nhật ký + minh chứng (đã có tiến độ mẫu)
 06b_PL_V_2027_mau_trang_Bo.docx              → Mẫu trống Bộ
-07_PL7_Phieu_khai_bao_cong_nghe_so_AI.docx   → Kê khai công nghệ số / AI
+06_PL6_Phieu_khai_bao_cong_nghe_so_AI.docx   → PHỤ LỤC 6 — Phiếu khai báo CN số / AI (đúng mẫu I+II+prompt log)
+07_PL7_Phieu_khai_bao_cong_nghe_so_AI.docx   → Bản kê khai AI (tham chiếu hồ sơ trước)
 08_PL8_Poster_dien_tu_04_trang.pdf           → Poster điện tử 04 trang (không tên HS/trường)
 09_BAO_CAO_STEM_Face_AIoT_Xiaozhi.docx       → Báo cáo STEM đầy đủ (Face + Xiaozhi)
 09b_...mau_cu.docx / 09c_...Xiaozhi.docx     → Bản tham chiếu gốc trong repo
 10_PL_VII_Huong_dan_poster_mau_Bo.docx       → Hướng dẫn poster Bộ
 11_KE_HOACH_NGHIEN_CUU_Face_AIoT_Xiaozhi.docx → Kế hoạch nghiên cứu (có Mục VI báo kết quả tóm tắt ≤300 từ)
+12_BAO_CAO_DU_AN_Nha_Thong_Minh_SmartHome_ESP32.docx
+                                             → Báo cáo dự án theo firmware SmartHome_ESP32 (chip esp32)
 anh_minh_hoa/                                → Ảnh dùng trong báo cáo/poster
 
 VIỆC KHÁCH / GVHD CẦN ĐIỀN TRƯỚC KHI NỘP:
